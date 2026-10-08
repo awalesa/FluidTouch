@@ -268,6 +268,9 @@ private:
     static void attemptEnableAutoReporting();
     static void performFallbackPolling();
 
+    // Commands sent whenever a connection to FluidNC (re)starts
+    static void sendStartupCommands();
+
     // Process a complete line received over the active serial stream
     static void processUartLine(char* line);
     

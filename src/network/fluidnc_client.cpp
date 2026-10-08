@@ -145,11 +145,7 @@ bool FluidNCClient::connect(const MachineConfig &config) {
         // missed the first $Report/Interval (still mid-mount), we'll resend
         // it from loop() on a state change or via fallback polling.
         fluidncUart.print("\n");                       // Flush any partial line
-        fluidncUart.print("$Build/Info\n");
-        fluidncUart.print("$Report/Interval=250\n");
-        autoReportingAttempted = true;
-        autoReportingEnabled = false;
-        lastAutoReportAttemptMs = millis();
+        sendStartupCommands();
         lastPollingMs = millis() - 1000;
         lastGCodePollMs = millis() - 10000;
         currentStatus.is_connected = false;
@@ -615,8 +611,7 @@ void FluidNCClient::espnowLoop() {
         currentStatus.last_update_ms = millis();
         lastPollingMs = millis() - 1000;
         lastGCodePollMs = millis() - 10000;
-        attemptEnableAutoReporting();
-        sendRaw("$Build/Info\n");
+        sendStartupCommands();
     } else if (!up && espnowLinkUp) {
         LOG_PRINTLN("[FluidNC] ESP-NOW link down");
         currentStatus.is_connected = false;
@@ -886,17 +881,8 @@ void FluidNCClient::onEventsCallback(WebsocketsEvent event, String data) {
             // Initialize polling timestamps to allow immediate fallback polling if auto-reporting fails
             lastPollingMs = millis() - 1000;
             lastGCodePollMs = millis() - 10000;
-            
-            // Attempt to enable automatic status reporting
-            attemptEnableAutoReporting();
-            
-            // Request firmware version info
-            webSocket.send("$Build/Info\n");
-            
-            // Request GCode parser state once: the touchscreen may have booted
-            // while the machine was already running, so modals (WCS, plane,
-            // units, tool, feed, spindle) must be refreshed immediately.
-            webSocket.send("$G\n");
+
+            sendStartupCommands();
             break;
             
         case WebsocketsEvent::ConnectionClosed:
@@ -1370,8 +1356,7 @@ void FluidNCClient::processUartLine(char* line) {
     // or FluidNC was reset and forgot the report interval: send them again.
     if (strcmp(payload, "[MSG:RST]") == 0) {
         LOG_PRINTLN("[FluidNC] FluidNC (re)started - re-sending setup commands");
-        attemptEnableAutoReporting();
-        sendRaw("$Build/Info\n");
+        sendStartupCommands();
     }
 
     // Fire callbacks
@@ -1405,6 +1390,19 @@ void FluidNCClient::attemptEnableAutoReporting() {
     autoReportingAttempted = true;
     autoReportingEnabled = false;  // Will be set true when we receive status
     lastAutoReportAttemptMs = millis();
+}
+
+void FluidNCClient::sendStartupCommands() {
+    // Attempt to enable automatic status reporting
+    attemptEnableAutoReporting();
+
+    // Request firmware version info
+    sendRaw("$Build/Info\n");
+
+    // Request GCode parser state once: the touchscreen may have booted
+    // while the machine was already running, so modals (WCS, plane,
+    // units, tool, feed, spindle) must be refreshed immediately.
+    sendRaw("$G\n");
 }
 
 void FluidNCClient::performFallbackPolling() {
