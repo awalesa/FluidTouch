@@ -1,6 +1,7 @@
 #ifndef UI_TAB_FILES_H
 #define UI_TAB_FILES_H
 
+#include <Arduino.h>
 #include <lvgl.h>
 #include <vector>
 #include <string>
@@ -49,7 +50,6 @@ private:
     static lv_obj_t *upload_progress_bar;
     static lv_obj_t *upload_progress_label;
     // XModem upload dialog widgets (wired mode)
-    static lv_obj_t *xmodem_dialog;
     static lv_obj_t *xmodem_progress_dialog;
     static lv_obj_t *xmodem_progress_bar;
     static lv_obj_t *xmodem_progress_label;
@@ -70,11 +70,25 @@ private:
     static void updateUploadProgress(size_t current, size_t total);
     static void closeUploadProgress(bool success, const char* error);
     static bool isDisplaySDAvailable();  // Check if Display SD card is available
-    // XModem (wired) upload helpers
-    static void showXModemDialog(const char* filename, const char* fullPath, size_t fileSize);
+    // Shared upload flow: check the destination folder, then HTTP (WiFi) or XModem (UART / USB CDC)
+    static void closeUploadDialog();
+    static void checkFolderThenUpload();
+    static void finishFolderCheck(int result);
+    static void startUpload();
+
+    // $Files/ListGcode for the folder browser and the folder check (any connection type)
+    static void requestRemoteList(const String &dir, void (*cb)(bool responded, const String &json));
+    static void finishRemoteList(bool responded);
+
+    // Folder browser for choosing an existing upload folder
+    static void showFolderBrowser();
+    static void browserNavigate(const String &folder);
+    static void closeFolderBrowser();
+
+    // XModem (wired) upload progress
     static void showXModemProgress(const char* filename);
     static void closeXModemProgress(bool success, const char* error);
-    static void navigateToUploadDirectory();  // Navigate to /fluidtouch/uploads on FluidNC SD
+    static void navigateToUploadDirectory();  // Show the last upload's destination folder
 };
 
 #endif // UI_TAB_FILES_H

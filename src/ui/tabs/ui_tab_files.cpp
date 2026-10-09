@@ -20,7 +20,6 @@ lv_obj_t *UITabFiles::upload_dialog = nullptr;
 lv_obj_t *UITabFiles::upload_progress_dialog = nullptr;
 lv_obj_t *UITabFiles::upload_progress_bar = nullptr;
 lv_obj_t *UITabFiles::upload_progress_label = nullptr;
-lv_obj_t *UITabFiles::xmodem_dialog = nullptr;
 lv_obj_t *UITabFiles::xmodem_progress_dialog = nullptr;
 lv_obj_t *UITabFiles::xmodem_progress_bar = nullptr;
 lv_obj_t *UITabFiles::xmodem_progress_label = nullptr;
@@ -1114,54 +1113,6 @@ void UITabFiles::listDisplaySDFiles(const std::string &path) {
 void UITabFiles::upload_button_event_cb(lv_event_t *e) {
     const char* fullPath = (const char*)lv_event_get_user_data(e);
 
-    // Upload requires a network connection to FluidNC
-    if (FluidNCClient::isSerialMode()) {
-        // Serial mode (UART or USB CDC) – use XModem transfer instead of HTTP upload
-        if (!isDisplaySDAvailable()) {
-            // Show SD-not-available error
-            lv_obj_t *dlg = lv_obj_create(lv_scr_act());
-            lv_obj_set_size(dlg, LV_PCT(100), LV_PCT(100));
-            lv_obj_set_style_bg_color(dlg, lv_color_make(0, 0, 0), 0);
-            lv_obj_set_style_bg_opa(dlg, LV_OPA_70, 0);
-            lv_obj_set_style_border_width(dlg, 0, 0);
-            lv_obj_clear_flag(dlg, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_t *ctn = lv_obj_create(dlg);
-            lv_obj_set_size(ctn, 500, 200);
-            lv_obj_center(ctn);
-            lv_obj_set_style_bg_color(ctn, UITheme::BG_MEDIUM, 0);
-            lv_obj_set_style_border_color(ctn, UITheme::UI_WARNING, 0);
-            lv_obj_set_style_border_width(ctn, 3, 0);
-            lv_obj_t *lbl = lv_label_create(ctn);
-            lv_label_set_text(lbl, "Display SD card not available.\nPlease insert SD card.");
-            lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
-            lv_obj_align(lbl, LV_ALIGN_CENTER, 0, -20);
-            lv_obj_t *btn = lv_btn_create(ctn);
-            lv_obj_set_size(btn, 120, 45);
-            lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -10);
-            lv_obj_add_event_cb(btn, [](lv_event_t *e) {
-                lv_obj_delete((lv_obj_t*)lv_event_get_user_data(e));
-            }, LV_EVENT_CLICKED, dlg);
-            lv_obj_t *bl = lv_label_create(btn);
-            lv_label_set_text(bl, "OK");
-            lv_obj_set_style_text_font(bl, &lv_font_montserrat_18, 0);
-            lv_obj_center(bl);
-            return;
-        }
-
-        // Open file to get size
-        std::string pathStr(fullPath);
-        size_t lastSlash = pathStr.find_last_of('/');
-        const char* fname = (lastSlash != std::string::npos)
-                            ? fullPath + lastSlash + 1 : fullPath;
-        File f = SD.open(fullPath);
-        if (!f) { Serial.printf("[Files] XModem: cannot open %s\n", fullPath); return; }
-        size_t fileSize = f.size();
-        f.close();
-
-        showXModemDialog(fname, fullPath, fileSize);
-        return;
-    }
-
     // Check if SD card is still available
     if (!isDisplaySDAvailable()) {
         Serial.println("[Files] SD card not available for upload");
@@ -1172,60 +1123,437 @@ void UITabFiles::upload_button_event_cb(lv_event_t *e) {
         lv_obj_set_style_bg_opa(dialog, LV_OPA_70, 0);
         lv_obj_set_style_border_width(dialog, 0, 0);
         lv_obj_clear_flag(dialog, LV_OBJ_FLAG_SCROLLABLE);
-        
+
         lv_obj_t *content = lv_obj_create(dialog);
         lv_obj_set_size(content, 500, 200);
         lv_obj_center(content);
         lv_obj_set_style_bg_color(content, UITheme::BG_MEDIUM, 0);
         lv_obj_set_style_border_color(content, UITheme::UI_WARNING, 0);
         lv_obj_set_style_border_width(content, 3, 0);
-        
+
         lv_obj_t *label = lv_label_create(content);
         lv_label_set_text(label, "SD card not available.\nPlease insert SD card.");
         lv_obj_set_style_text_font(label, &lv_font_montserrat_18, 0);
         lv_obj_align(label, LV_ALIGN_CENTER, 0, -20);
-        
+
         lv_obj_t *btn = lv_btn_create(content);
         lv_obj_set_size(btn, 120, 45);
         lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -10);
         lv_obj_add_event_cb(btn, [](lv_event_t *e) {
             lv_obj_delete((lv_obj_t*)lv_event_get_user_data(e));
         }, LV_EVENT_CLICKED, dialog);
-        
+
         lv_obj_t *btn_label = lv_label_create(btn);
         lv_label_set_text(btn_label, "OK");
         lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_18, 0);
         lv_obj_center(btn_label);
-        
+
         return;
     }
-    
+
     // Extract just the filename from the full path for display
     std::string pathStr(fullPath);
     size_t lastSlash = pathStr.find_last_of('/');
     const char* filename = (lastSlash != std::string::npos) ? fullPath + lastSlash + 1 : fullPath;
-    
+
     // Get file size
     File file = SD.open(fullPath);
     if (!file) {
         Serial.printf("[Files] Failed to open file: %s\n", fullPath);
         return;
     }
-    
+
     size_t fileSize = file.size();
     file.close();
-    
+
     Serial.printf("[Files] File size: %zu bytes (%.2f MB)\n", fileSize, fileSize / (1024.0f * 1024.0f));
-    
+
     showUploadDialog(filename, fullPath, fileSize);
 }
 
-// Show upload confirmation dialog
-void UITabFiles::showUploadDialog(const char* filename, const char* fullPath, size_t fileSize) {
+// ============================================================================
+// Upload destination - shared by HTTP (WiFi) and XModem (UART / USB CDC)
+// ============================================================================
+
+// Remembered until restart so repeated uploads go to the same place
+static bool upload_to_flash = false;
+static String upload_folder = FLUIDNC_UPLOAD_PATH;
+
+// Parameters of the upload being confirmed or in progress (must outlive dialogs)
+static char upload_local_path[256] = {};
+static char upload_display_name[128] = {};
+static char xmodem_remote_path[256] = {};
+
+static lv_obj_t *upload_dest_dd = nullptr;
+static lv_obj_t *upload_folder_label = nullptr;
+static lv_obj_t *upload_path_label = nullptr;
+
+// "/a//b" -> "/a/b/", "" -> "/"
+static String normalizeFolder(String folder) {
+    folder.trim();
+    while (folder.indexOf("//") >= 0) {
+        folder.replace("//", "/");
+    }
+    if (!folder.startsWith("/")) folder = "/" + folder;
+    if (!folder.endsWith("/")) folder += "/";
+    return folder;
+}
+
+// FluidNC path of a folder on the chosen volume, without a trailing slash
+// ("/sd/fluidtouch/uploads", or "/sd" for the root)
+static String remoteDir(bool toFlash, const String& folder) {
+    String dir = String(toFlash ? "/localfs" : "/sd") + folder;
+    while (dir.endsWith("/")) dir.remove(dir.length() - 1);
+    return dir;
+}
+
+// "/a/b/" -> "/a/", "/" -> "/"
+static String parentFolder(const String& folder) {
+    if (folder == "/") return folder;
+    String f = folder.substring(0, folder.length() - 1);
+    return f.substring(0, f.lastIndexOf('/') + 1);
+}
+
+static void updateUploadDestLabels() {
+    if (upload_folder_label) {
+        lv_label_set_text(upload_folder_label, upload_folder.c_str());
+    }
+    if (upload_path_label) {
+        String path = remoteDir(upload_to_flash, upload_folder) + "/" + upload_display_name;
+        lv_label_set_text_fmt(upload_path_label, "Path: %s", path.c_str());
+    }
+}
+
+void UITabFiles::closeUploadDialog() {
     if (upload_dialog) {
         lv_obj_delete(upload_dialog);
+        upload_dialog = nullptr;
     }
-    
+    upload_dest_dd = upload_folder_label = upload_path_label = nullptr;
+}
+
+// ----------------------------------------------------------------------------
+// $Files/ListGcode request outside the Files tab's own list, for the folder
+// browser and the pre-upload folder check. Works over every connection type.
+// ----------------------------------------------------------------------------
+
+static void (*remote_list_cb)(bool responded, const String &json) = nullptr;
+static bool remote_list_pending = false;
+static bool remote_list_collecting = false;
+static String remote_list_json;
+static lv_timer_t *remote_list_timer = nullptr;
+
+// responded is false for a timeout or an "error:" reply (e.g. an older FluidNC)
+void UITabFiles::finishRemoteList(bool responded) {
+    if (!remote_list_pending) return;
+    remote_list_pending = false;
+    FluidNCClient::clearMessageCallback();
+    if (remote_list_timer) {
+        lv_timer_delete(remote_list_timer);
+        remote_list_timer = nullptr;
+    }
+    auto cb = remote_list_cb;
+    remote_list_cb = nullptr;
+    if (cb) cb(responded, remote_list_json);
+}
+
+void UITabFiles::requestRemoteList(const String &dir, void (*cb)(bool responded, const String &json)) {
+    if (remote_list_pending) finishRemoteList(false);
+    remote_list_cb = cb;
+    remote_list_json = "";
+    remote_list_collecting = false;
+    remote_list_pending = true;
+
+    // Same reassembly as the Files tab: FluidNC v4 sends the JSON in chunks
+    // wrapped in [JSON:...], with "ok" sometimes appended to the last chunk
+    FluidNCClient::setMessageCallback([](const char* message) {
+        String msg(message);
+        while (msg.endsWith("\r") || msg.endsWith("\n")) msg.remove(msg.length() - 1);
+        if (msg.startsWith("<") || msg.startsWith("[GC:") || msg.startsWith("[MSG:") ||
+            msg == "PING" || msg.startsWith("PING:")) {
+            return;
+        }
+        if (msg.startsWith("error:")) {
+            finishRemoteList(false);
+            return;
+        }
+        bool done = false;
+        String last = msg.substring(msg.lastIndexOf('\n') + 1);
+        last.trim();
+        if (last.equalsIgnoreCase("ok")) {
+            done = true;
+            int nl = msg.lastIndexOf('\n');
+            msg = nl >= 0 ? msg.substring(0, nl) : "";
+        }
+        if (msg.length() > 0) {
+            if (msg.startsWith("[JSON:") || msg.startsWith("{")) remote_list_collecting = true;
+            if (remote_list_collecting) {
+                if (msg.startsWith("[JSON:")) {
+                    msg.remove(0, 6);
+                    if (msg.endsWith("]")) msg.remove(msg.length() - 1);
+                }
+                remote_list_json += msg;
+            }
+        }
+        if (done && remote_list_collecting) finishRemoteList(true);
+    });
+    remote_list_timer = lv_timer_create([](lv_timer_t *t) {
+        remote_list_timer = nullptr;  // Deleted by LVGL after this single run
+        Serial.println("[Files] Folder listing timed out");
+        finishRemoteList(false);
+    }, 5000, nullptr);
+    lv_timer_set_repeat_count(remote_list_timer, 1);
+
+    Serial.printf("[Files] Listing %s\n", dir.c_str());
+    String cmd = "$Files/ListGcode=" + dir + "\n";
+    FluidNCClient::sendCommand(cmd.c_str());
+}
+
+// ----------------------------------------------------------------------------
+// Folder browser: pick an existing folder, laid out like the Files tab
+// ----------------------------------------------------------------------------
+
+static lv_obj_t *browser_dialog = nullptr;
+static lv_obj_t *browser_path_label = nullptr;
+static lv_obj_t *browser_status_label = nullptr;
+static lv_obj_t *browser_list = nullptr;
+static String browser_folder = "/";
+static bool browser_fallback_to_root = false;
+static char browser_dir_names[100][128];
+
+void UITabFiles::browserNavigate(const String &folder) {
+    browser_folder = normalizeFolder(folder);
+    if (browser_path_label) {
+        lv_label_set_text(browser_path_label, (remoteDir(upload_to_flash, browser_folder) + "/").c_str());
+    }
+    if (browser_status_label) {
+        lv_label_set_text(browser_status_label, "Loading...");
+        lv_obj_set_style_text_color(browser_status_label, UITheme::UI_INFO, 0);
+    }
+    if (browser_list) lv_obj_clean(browser_list);
+
+    requestRemoteList(remoteDir(upload_to_flash, browser_folder), [](bool responded, const String &json) {
+        if (!browser_dialog || !browser_list) return;  // Closed while loading
+
+        JsonDocument doc;
+        bool parsed = responded && !deserializeJson(doc, json);
+        if (!parsed || doc["error"].is<const char*>()) {
+            // The starting folder (e.g. the default upload folder) may not
+            // exist yet: show the root instead
+            if (browser_fallback_to_root && browser_folder != "/") {
+                browser_fallback_to_root = false;
+                browserNavigate("/");
+                return;
+            }
+            lv_label_set_text(browser_status_label, parsed ? doc["error"].as<const char*>() : "No response from FluidNC");
+            lv_obj_set_style_text_color(browser_status_label, UITheme::STATE_ALARM, 0);
+            return;
+        }
+        browser_fallback_to_root = false;
+
+        int folders = 0, files = 0;
+        JsonArray entries = doc["files"].as<JsonArray>();
+        // Folders first, tappable; then files, dimmed, so you can see what's there
+        for (int pass = 0; pass < 2; pass++) {
+            for (JsonObject entry : entries) {
+                String name = entry["name"].as<String>();
+                bool is_dir = entry["size"].as<String>() == "-1";
+                if (is_dir != (pass == 0)) continue;
+
+                lv_obj_t *row = lv_obj_create(browser_list);
+                lv_obj_set_size(row, 750, 46);
+                lv_obj_set_style_bg_color(row, is_dir ? UITheme::BG_BUTTON : UITheme::BG_DARKER, 0);
+                lv_obj_set_style_border_width(row, 1, 0);
+                lv_obj_set_style_border_color(row, UITheme::BORDER_MEDIUM, 0);
+                lv_obj_set_style_pad_all(row, 5, 0);
+                lv_obj_set_style_radius(row, 3, 0);
+                lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+                lv_obj_t *lbl = lv_label_create(row);
+                lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, 0);
+                lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 5, 0);
+                lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
+                lv_obj_set_width(lbl, 720);
+
+                if (is_dir && folders < 100) {
+                    strncpy(browser_dir_names[folders], name.c_str(), sizeof(browser_dir_names[0]) - 1);
+                    browser_dir_names[folders][sizeof(browser_dir_names[0]) - 1] = '\0';
+                    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+                    lv_obj_add_event_cb(row, [](lv_event_t *e) {
+                        const char *dir_name = (const char*)lv_event_get_user_data(e);
+                        browserNavigate(browser_folder + dir_name + "/");
+                    }, LV_EVENT_CLICKED, browser_dir_names[folders]);
+                    lv_label_set_text_fmt(lbl, LV_SYMBOL_DIRECTORY " %s", name.c_str());
+                    lv_obj_set_style_text_color(lbl, UITheme::ACCENT_SECONDARY, 0);
+                    folders++;
+                } else {
+                    lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
+                    lv_label_set_text(lbl, name.c_str());
+                    lv_obj_set_style_text_color(lbl, UITheme::TEXT_DISABLED, 0);
+                    files++;
+                }
+            }
+        }
+        lv_label_set_text_fmt(browser_status_label, "%d folder(s), %d file(s)", folders, files);
+        lv_obj_set_style_text_color(browser_status_label, UITheme::UI_SUCCESS, 0);
+    });
+}
+
+void UITabFiles::showFolderBrowser() {
+    // Full-screen, laid out like the Files tab
+    browser_dialog = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(browser_dialog, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(browser_dialog, UITheme::BG_MEDIUM, 0);
+    lv_obj_set_style_bg_opa(browser_dialog, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(browser_dialog, 0, 0);
+    lv_obj_set_style_radius(browser_dialog, 0, 0);
+    lv_obj_set_style_pad_all(browser_dialog, 10, 0);
+    lv_obj_clear_flag(browser_dialog, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title = lv_label_create(browser_dialog);
+    lv_label_set_text_fmt(title, LV_SYMBOL_DIRECTORY " Choose a folder on %s",
+                          upload_to_flash ? "FluidNC Flash" : "FluidNC SD Card");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, UITheme::ACCENT_PRIMARY, 0);
+    lv_obj_set_pos(title, 5, 0);
+
+    // Up button (navigate to parent folder)
+    lv_obj_t *btn_up = lv_button_create(browser_dialog);
+    lv_obj_set_size(btn_up, 100, 45);
+    lv_obj_set_pos(btn_up, 5, 35);
+    lv_obj_set_style_bg_color(btn_up, UITheme::BG_BUTTON, 0);
+    lv_obj_add_event_cb(btn_up, [](lv_event_t *e) {
+        browserNavigate(parentFolder(browser_folder));
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t *lbl_up = lv_label_create(btn_up);
+    lv_label_set_text(lbl_up, LV_SYMBOL_UP " Up");
+    lv_obj_set_style_text_font(lbl_up, &lv_font_montserrat_16, 0);
+    lv_obj_center(lbl_up);
+
+    // Current folder and status
+    browser_path_label = lv_label_create(browser_dialog);
+    lv_obj_set_style_text_font(browser_path_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(browser_path_label, UITheme::ACCENT_SECONDARY, 0);
+    lv_obj_set_pos(browser_path_label, 125, 37);
+    lv_label_set_long_mode(browser_path_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(browser_path_label, 640);
+
+    browser_status_label = lv_label_create(browser_dialog);
+    lv_obj_set_style_text_font(browser_status_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_pos(browser_status_label, 125, 60);
+
+    // Folder list with scrolling
+    browser_list = lv_obj_create(browser_dialog);
+    lv_obj_set_size(browser_list, 770, 300);
+    lv_obj_set_pos(browser_list, 5, 90);
+    lv_obj_set_style_bg_color(browser_list, UITheme::BG_DARKER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(browser_list, UITheme::BORDER_LIGHT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(browser_list, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(browser_list, 5, LV_PART_MAIN);
+    lv_obj_set_flex_flow(browser_list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(browser_list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(browser_list, 6, 0);
+    lv_obj_set_scroll_dir(browser_list, LV_DIR_VER);
+
+    // Select / Cancel
+    lv_obj_t *btn_select = lv_button_create(browser_dialog);
+    lv_obj_set_size(btn_select, 260, 50);
+    lv_obj_set_pos(btn_select, 140, 400);
+    lv_obj_set_style_bg_color(btn_select, UITheme::ACCENT_PRIMARY, 0);
+    lv_obj_add_event_cb(btn_select, [](lv_event_t *e) {
+        upload_folder = browser_folder;
+        updateUploadDestLabels();
+        closeFolderBrowser();
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t *lbl_select = lv_label_create(btn_select);
+    lv_label_set_text(lbl_select, LV_SYMBOL_OK " Select This Folder");
+    lv_obj_set_style_text_font(lbl_select, &lv_font_montserrat_18, 0);
+    lv_obj_center(lbl_select);
+
+    lv_obj_t *btn_cancel = lv_button_create(browser_dialog);
+    lv_obj_set_size(btn_cancel, 180, 50);
+    lv_obj_set_pos(btn_cancel, 440, 400);
+    lv_obj_set_style_bg_color(btn_cancel, UITheme::BG_BUTTON, 0);
+    lv_obj_add_event_cb(btn_cancel, [](lv_event_t *e) {
+        closeFolderBrowser();
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t *lbl_cancel = lv_label_create(btn_cancel);
+    lv_label_set_text(lbl_cancel, "Cancel");
+    lv_obj_set_style_text_font(lbl_cancel, &lv_font_montserrat_18, 0);
+    lv_obj_center(lbl_cancel);
+
+    // Start in the current upload folder (the root if it doesn't exist yet)
+    browser_fallback_to_root = true;
+    browserNavigate(upload_folder);
+}
+
+void UITabFiles::closeFolderBrowser() {
+    if (remote_list_pending) finishRemoteList(false);
+    if (browser_dialog) {
+        lv_obj_delete(browser_dialog);
+        browser_dialog = nullptr;
+    }
+    browser_path_label = browser_status_label = browser_list = nullptr;
+}
+
+// ----------------------------------------------------------------------------
+// Upload: only to an existing folder, except the default upload folder, which
+// an HTTP upload may create. FluidNC can't create folders over a serial link,
+// and $Xmodem/Receive cancels the transfer if the folder is missing.
+// ----------------------------------------------------------------------------
+
+enum class FolderCheck { Exists, Missing, Unknown };
+
+void UITabFiles::startUpload() {
+    if (FluidNCClient::isSerialMode()) {
+        if (!FluidNCClient::startXModemUpload(upload_local_path, xmodem_remote_path, upload_display_name)) {
+            closeXModemProgress(false, "Failed to start transfer task");
+        }
+    } else {
+        UploadManager::uploadFile(upload_local_path, upload_display_name, upload_to_flash,
+                                  upload_folder.c_str(), updateUploadProgress, closeUploadProgress);
+    }
+}
+
+void UITabFiles::finishFolderCheck(int check) {
+    FolderCheck result = (FolderCheck)check;
+    bool serial = FluidNCClient::isSerialMode();
+    bool is_default = upload_folder == normalizeFolder(FLUIDNC_UPLOAD_PATH);
+    if (result == FolderCheck::Missing && (serial || !is_default)) {
+        String dir = remoteDir(upload_to_flash, upload_folder);
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Folder %s doesn't exist on FluidNC.\n%s", dir.c_str(),
+                 serial ? "Create it from FluidNC's WebUI, or choose another folder."
+                        : "Choose another folder.");
+        if (serial) closeXModemProgress(false, msg);
+        else closeUploadProgress(false, msg);
+        return;
+    }
+    // Exists, the default folder (created by the HTTP upload), or the check
+    // didn't answer (e.g. an older FluidNC): upload and let FluidNC report a failure
+    startUpload();
+}
+
+void UITabFiles::checkFolderThenUpload() {
+    requestRemoteList(remoteDir(upload_to_flash, upload_folder), [](bool responded, const String &json) {
+        FolderCheck result = FolderCheck::Unknown;
+        if (responded) {
+            if (json.indexOf("\"error\"") >= 0) result = FolderCheck::Missing;
+            else if (json.indexOf("\"files\"") >= 0) result = FolderCheck::Exists;
+        }
+        finishFolderCheck((int)result);
+    });
+}
+
+// Show upload confirmation dialog: destination (SD / flash) and folder
+void UITabFiles::showUploadDialog(const char* filename, const char* fullPath, size_t fileSize) {
+    closeUploadDialog();
+
+    strncpy(upload_local_path, fullPath, sizeof(upload_local_path) - 1);
+    upload_local_path[sizeof(upload_local_path) - 1] = '\0';
+    strncpy(upload_display_name, filename, sizeof(upload_display_name) - 1);
+    upload_display_name[sizeof(upload_display_name) - 1] = '\0';
+
     // Create modal background
     upload_dialog = lv_obj_create(lv_scr_act());
     lv_obj_set_size(upload_dialog, LV_PCT(100), LV_PCT(100));
@@ -1233,65 +1561,100 @@ void UITabFiles::showUploadDialog(const char* filename, const char* fullPath, si
     lv_obj_set_style_bg_opa(upload_dialog, LV_OPA_70, 0);
     lv_obj_set_style_border_width(upload_dialog, 0, 0);
     lv_obj_clear_flag(upload_dialog, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     // Dialog content box
     lv_obj_t *content = lv_obj_create(upload_dialog);
-    lv_obj_set_size(content, 600, 300);
+    lv_obj_set_size(content, 640, 340);
     lv_obj_center(content);
     lv_obj_set_style_bg_color(content, UITheme::BG_MEDIUM, 0);
     lv_obj_set_style_border_color(content, UITheme::ACCENT_PRIMARY, 0);
     lv_obj_set_style_border_width(content, 3, 0);
     lv_obj_set_style_pad_all(content, 20, 0);
     lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     // Title
     lv_obj_t *title = lv_label_create(content);
     lv_label_set_text(title, LV_SYMBOL_UPLOAD " Upload to FluidNC");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_22, 0);
     lv_obj_set_style_text_color(title, UITheme::ACCENT_PRIMARY, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
-    
-    // Filename
+
+    // Filename and size
+    char sizeText[48];
+    if (fileSize >= 1048576) snprintf(sizeText, sizeof(sizeText), "%.2f MB", fileSize / 1048576.0f);
+    else if (fileSize >= 1024) snprintf(sizeText, sizeof(sizeText), "%.1f KB", fileSize / 1024.0f);
+    else snprintf(sizeText, sizeof(sizeText), "%u B", (unsigned)fileSize);
     lv_obj_t *lbl_filename = lv_label_create(content);
-    lv_label_set_text_fmt(lbl_filename, "File: %s", filename);
+    lv_label_set_text_fmt(lbl_filename, "File: %s  (%s)", filename, sizeText);
     lv_obj_set_style_text_font(lbl_filename, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(lbl_filename, UITheme::TEXT_LIGHT, 0);
     lv_label_set_long_mode(lbl_filename, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(lbl_filename, 550);
-    lv_obj_align(lbl_filename, LV_ALIGN_TOP_LEFT, 0, 45);
-    
-    // File size
-    lv_obj_t *lbl_size = lv_label_create(content);
-    float sizeMB = fileSize / (1024.0f * 1024.0f);
-    char sizeText[64];
-    if (sizeMB >= 1.0f) {
-        snprintf(sizeText, sizeof(sizeText), "Size: %.2f MB", sizeMB);
-    } else {
-        float sizeKB = fileSize / 1024.0f;
-        snprintf(sizeText, sizeof(sizeText), "Size: %.2f KB", sizeKB);
-    }
-    lv_label_set_text(lbl_size, sizeText);
-    lv_obj_set_style_text_font(lbl_size, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl_size, UITheme::TEXT_LIGHT, 0);
-    lv_obj_align(lbl_size, LV_ALIGN_TOP_LEFT, 0, 80);
-    
-    // Destination
+    lv_obj_set_width(lbl_filename, 590);
+    lv_obj_align(lbl_filename, LV_ALIGN_TOP_LEFT, 0, 42);
+
+    // Destination: SD card or flash
     lv_obj_t *lbl_dest = lv_label_create(content);
-    // Trim trailing slash from FLUIDNC_UPLOAD_PATH to avoid double slashes
-    String destPath = String(FLUIDNC_UPLOAD_PATH);
-    while (destPath.endsWith("/")) {
-        destPath = destPath.substring(0, destPath.length() - 1);
-    }
-    lv_label_set_text_fmt(lbl_dest, "Destination: /sd%s/%s", destPath.c_str(), filename);
+    lv_label_set_text(lbl_dest, "Destination:");
     lv_obj_set_style_text_font(lbl_dest, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(lbl_dest, UITheme::TEXT_LIGHT, 0);
-    lv_label_set_long_mode(lbl_dest, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(lbl_dest, 550);
-    lv_obj_align(lbl_dest, LV_ALIGN_TOP_LEFT, 0, 115);
-    
+    lv_obj_align(lbl_dest, LV_ALIGN_TOP_LEFT, 0, 88);
+
+    upload_dest_dd = lv_dropdown_create(content);
+    lv_dropdown_set_options(upload_dest_dd, "FluidNC SD Card\nFluidNC Flash");
+    lv_dropdown_set_selected(upload_dest_dd, upload_to_flash ? 1 : 0);
+    lv_obj_set_size(upload_dest_dd, 300, 44);
+    lv_obj_align(upload_dest_dd, LV_ALIGN_TOP_LEFT, 130, 80);
+    lv_obj_set_style_text_font(upload_dest_dd, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_bg_color(upload_dest_dd, UITheme::BG_BUTTON, 0);
+    lv_obj_set_style_text_color(upload_dest_dd, lv_color_white(), 0);
+    lv_obj_add_event_cb(upload_dest_dd, [](lv_event_t *e) {
+        bool to_flash = lv_dropdown_get_selected(upload_dest_dd) == 1;
+        if (to_flash != upload_to_flash) {
+            // A folder on one volume needn't exist on the other: start from the default
+            upload_to_flash = to_flash;
+            upload_folder = FLUIDNC_UPLOAD_PATH;
+        }
+        updateUploadDestLabels();
+    }, LV_EVENT_VALUE_CHANGED, nullptr);
+
+    // Folder on that volume, chosen with the folder browser
+    lv_obj_t *lbl_folder = lv_label_create(content);
+    lv_label_set_text(lbl_folder, "Folder:");
+    lv_obj_set_style_text_font(lbl_folder, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(lbl_folder, UITheme::TEXT_LIGHT, 0);
+    lv_obj_align(lbl_folder, LV_ALIGN_TOP_LEFT, 0, 146);
+
+    upload_folder_label = lv_label_create(content);
+    lv_obj_set_style_text_font(upload_folder_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(upload_folder_label, UITheme::ACCENT_SECONDARY, 0);
+    lv_label_set_long_mode(upload_folder_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(upload_folder_label, 300);
+    lv_obj_align(upload_folder_label, LV_ALIGN_TOP_LEFT, 130, 146);
+
+    lv_obj_t *btn_browse = lv_btn_create(content);
+    lv_obj_set_size(btn_browse, 150, 44);
+    lv_obj_align(btn_browse, LV_ALIGN_TOP_LEFT, 440, 136);
+    lv_obj_set_style_bg_color(btn_browse, UITheme::BG_BUTTON, 0);
+    lv_obj_add_event_cb(btn_browse, [](lv_event_t *e) {
+        showFolderBrowser();
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t *lbl_browse = lv_label_create(btn_browse);
+    lv_label_set_text(lbl_browse, LV_SYMBOL_DIRECTORY " Change");
+    lv_obj_set_style_text_font(lbl_browse, &lv_font_montserrat_16, 0);
+    lv_obj_center(lbl_browse);
+
+    // Full destination path
+    upload_path_label = lv_label_create(content);
+    lv_obj_set_style_text_font(upload_path_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(upload_path_label, UITheme::TEXT_DISABLED, 0);
+    lv_label_set_long_mode(upload_path_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(upload_path_label, 590);
+    lv_obj_align(upload_path_label, LV_ALIGN_TOP_LEFT, 0, 196);
+    updateUploadDestLabels();
+
     // Button container (positioned at bottom)
     lv_obj_t *btn_container = lv_obj_create(content);
-    lv_obj_set_size(btn_container, 560, 60);
+    lv_obj_set_size(btn_container, 590, 60);
     lv_obj_set_flex_flow(btn_container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(btn_container, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_opa(btn_container, LV_OPA_TRANSP, 0);
@@ -1299,81 +1662,53 @@ void UITabFiles::showUploadDialog(const char* filename, const char* fullPath, si
     lv_obj_set_style_pad_all(btn_container, 0, 0);
     lv_obj_align(btn_container, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_clear_flag(btn_container, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     // Upload button (left side)
     lv_obj_t *btn_upload = lv_btn_create(btn_container);
     lv_obj_set_size(btn_upload, 180, 50);
     lv_obj_set_style_bg_color(btn_upload, UITheme::ACCENT_PRIMARY, 0);
-    
-    // Store filename and full path for upload callback
-    static char upload_filename[128];
-    static char upload_fullpath[256];
-    strncpy(upload_filename, filename, sizeof(upload_filename) - 1);
-    upload_filename[sizeof(upload_filename) - 1] = '\0';
-    strncpy(upload_fullpath, fullPath, sizeof(upload_fullpath) - 1);
-    upload_fullpath[sizeof(upload_fullpath) - 1] = '\0';
-    
     lv_obj_add_event_cb(btn_upload, [](lv_event_t *e) {
-        const char* fname = (const char*)lv_event_get_user_data(e);
-        
-        Serial.printf("[UITabFiles] Upload button clicked for: %s\n", fname);
-        
-        // Copy filename and full path to heap for timer
-        char* fname_copy = (char*)malloc(128);
-        char* fullpath_copy = (char*)malloc(256);
-        strncpy(fname_copy, upload_filename, 127);
-        fname_copy[127] = '\0';
-        strncpy(fullpath_copy, upload_fullpath, 255);
-        fullpath_copy[255] = '\0';
-        
+        Serial.printf("[UITabFiles] Upload %s to %s\n", upload_display_name,
+                      (remoteDir(upload_to_flash, upload_folder) + "/").c_str());
+
         // Close confirmation dialog first
-        if (upload_dialog) {
-            lv_obj_delete(upload_dialog);
-            upload_dialog = nullptr;
-        }
-        
+        closeUploadDialog();
+
         // Give LVGL time to process the deletion before creating new dialog
         lv_timer_create([](lv_timer_t *timer) {
-            char* fullpath_copy = (char*)lv_timer_get_user_data(timer);
-            
-            // Extract filename from stored copies
-            size_t lastSlash = std::string(fullpath_copy).find_last_of('/');
-            const char* fname = (lastSlash != std::string::npos) ? fullpath_copy + lastSlash + 1 : fullpath_copy;
-            
-            Serial.printf("[UITabFiles] Timer callback executing for: %s\n", fname);
-            
-            // Show progress dialog
-            showUploadProgress(fname);
-            
-            // Use the stored full path directly
-            UploadManager::uploadFile(
-                fullpath_copy,
-                fname,
-                updateUploadProgress,
-                closeUploadProgress
-            );
-            
-            free(fullpath_copy);
             lv_timer_delete(timer);
-        }, 50, fullpath_copy);
-        
-        free(fname_copy);
-    }, LV_EVENT_CLICKED, upload_filename);
-    
+            if (FluidNCClient::isSerialMode()) {
+                // UART / USB CDC: XModem
+                snprintf(xmodem_remote_path, sizeof(xmodem_remote_path), "%s/%s",
+                         remoteDir(upload_to_flash, upload_folder).c_str(), upload_display_name);
+                showXModemProgress(upload_display_name);
+            } else {
+                // WiFi: HTTP upload
+                showUploadProgress(upload_display_name);
+            }
+            if (upload_folder == "/") {
+                startUpload();  // The root always exists
+            } else {
+                lv_obj_t *label = FluidNCClient::isSerialMode() ? xmodem_progress_label : upload_progress_label;
+                if (label) lv_label_set_text(label, "Checking folder...");
+                checkFolderThenUpload();
+            }
+        }, 50, nullptr);
+    }, LV_EVENT_CLICKED, nullptr);
+
     lv_obj_t *lbl_upload = lv_label_create(btn_upload);
-    lv_label_set_text(lbl_upload, "Upload");
+    lv_label_set_text(lbl_upload, LV_SYMBOL_UPLOAD " Upload");
     lv_obj_set_style_text_font(lbl_upload, &lv_font_montserrat_18, 0);
     lv_obj_center(lbl_upload);
-    
+
     // Cancel button (right side)
     lv_obj_t *btn_cancel = lv_btn_create(btn_container);
     lv_obj_set_size(btn_cancel, 180, 50);
     lv_obj_set_style_bg_color(btn_cancel, UITheme::BG_BUTTON, 0);
     lv_obj_add_event_cb(btn_cancel, [](lv_event_t *e) {
-        lv_obj_delete(upload_dialog);
-        upload_dialog = nullptr;
+        closeUploadDialog();
     }, LV_EVENT_CLICKED, nullptr);
-    
+
     lv_obj_t *lbl_cancel = lv_label_create(btn_cancel);
     lv_label_set_text(lbl_cancel, "Cancel");
     lv_obj_set_style_text_font(lbl_cancel, &lv_font_montserrat_18, 0);
@@ -1408,7 +1743,7 @@ void UITabFiles::showUploadProgress(const char* filename) {
     
     // Dialog content box
     lv_obj_t *content = lv_obj_create(upload_progress_dialog);
-    lv_obj_set_size(content, 600, 280);
+    lv_obj_set_size(content, 600, 320);
     lv_obj_center(content);
     lv_obj_set_style_bg_color(content, UITheme::BG_MEDIUM, 0);
     lv_obj_set_style_border_color(content, UITheme::ACCENT_PRIMARY, 0);
@@ -1553,7 +1888,7 @@ void UITabFiles::closeUploadProgress(bool success, const char* error) {
             }, LV_EVENT_CLICKED, nullptr);
             
             lv_obj_t *lbl_goto = lv_label_create(btn_goto);
-            lv_label_set_text(lbl_goto, "Open Upload Folder");
+            lv_label_set_text(lbl_goto, LV_SYMBOL_DIRECTORY " Open Folder");
             lv_obj_set_style_text_font(lbl_goto, &lv_font_montserrat_18, 0);
             lv_obj_center(lbl_goto);
             
@@ -1595,71 +1930,60 @@ void UITabFiles::closeUploadProgress(bool success, const char* error) {
                 }
             }
             
-            // Show error message if provided
-            if (error && !strstr(error, "cancelled")) {
-                lv_obj_t *error_label = lv_label_create(content);
-                lv_label_set_text(error_label, error);
-                lv_obj_set_style_text_font(error_label, &lv_font_montserrat_16, 0);
-                lv_obj_set_style_text_color(error_label, UITheme::TEXT_LIGHT, 0);
-                lv_obj_align(error_label, LV_ALIGN_TOP_LEFT, 0, 180);
+            // Show the error in place of the progress text
+            if (upload_progress_label && error && !strstr(error, "cancelled")) {
+                lv_label_set_long_mode(upload_progress_label, LV_LABEL_LONG_WRAP);
+                lv_obj_set_width(upload_progress_label, 550);
+                lv_label_set_text(upload_progress_label, error);
+                lv_obj_set_style_text_color(upload_progress_label, UITheme::STATE_ALARM, 0);
             }
             
-            // Change cancel button to close button
-            // Find the cancel button (it's the last child of content)
+            // Replace the "reset to cancel" note (the last child) with a Close button
             uint32_t child_count = lv_obj_get_child_count(content);
             if (child_count > 0) {
-                lv_obj_t *cancel_btn = lv_obj_get_child(content, child_count - 1);
-                if (cancel_btn) {
-                    // Clear old event callbacks
-                    lv_obj_remove_event_cb(cancel_btn, nullptr);
-                    lv_obj_set_style_bg_color(cancel_btn, UITheme::BG_BUTTON, 0);
-                    lv_obj_add_event_cb(cancel_btn, [](lv_event_t *e) {
-                        Serial.println("[UITabFiles] Close button clicked");
-                        if (upload_progress_dialog) {
-                            lv_obj_delete(upload_progress_dialog);
-                            upload_progress_dialog = nullptr;
-                            upload_progress_bar = nullptr;
-                            upload_progress_label = nullptr;
-                        }
-                    }, LV_EVENT_CLICKED, nullptr);
-                    
-                    // Update button label
-                    lv_obj_t *btn_label = lv_obj_get_child(cancel_btn, 0);
-                    if (btn_label) {
-                        lv_label_set_text(btn_label, "Close");
-                    }
-                }
+                lv_obj_delete(lv_obj_get_child(content, child_count - 1));
             }
+            lv_obj_t *btn_close = lv_btn_create(content);
+            lv_obj_set_size(btn_close, 160, 50);
+            lv_obj_align(btn_close, LV_ALIGN_BOTTOM_MID, 0, 0);
+            lv_obj_set_style_bg_color(btn_close, UITheme::BG_BUTTON, 0);
+            lv_obj_add_event_cb(btn_close, [](lv_event_t *e) {
+                if (upload_progress_dialog) {
+                    lv_obj_delete(upload_progress_dialog);
+                    upload_progress_dialog = nullptr;
+                    upload_progress_bar = nullptr;
+                    upload_progress_label = nullptr;
+                }
+            }, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t *lbl_close = lv_label_create(btn_close);
+            lv_label_set_text(lbl_close, "Close");
+            lv_obj_set_style_text_font(lbl_close, &lv_font_montserrat_18, 0);
+            lv_obj_center(lbl_close);
         }
+        lv_refr_now(NULL);
     }
 }
 
 void UITabFiles::navigateToUploadDirectory() {
     Serial.println("[Files] Navigating to upload directory");
-    
-    // Switch to FluidNC SD storage
-    current_storage = StorageSource::FLUIDNC_SD;
-    
+
+    // Switch to the storage the last upload went to
+    current_storage = upload_to_flash ? StorageSource::FLUIDNC_FLASH : StorageSource::FLUIDNC_SD;
+
     // Update the dropdown to reflect the storage change
     if (storage_dropdown) {
-        lv_dropdown_set_selected(storage_dropdown, static_cast<uint16_t>(StorageSource::FLUIDNC_SD));
+        lv_dropdown_set_selected(storage_dropdown, static_cast<uint16_t>(current_storage));
     }
-    
-    // Navigate to the upload directory (using FLUIDNC_UPLOAD_PATH from config.h)
-    // FluidNC paths need /sd prefix, trim any leading/trailing slashes from FLUIDNC_UPLOAD_PATH
-    String uploadPath = String(FLUIDNC_UPLOAD_PATH);
-    // Remove leading slash if present before prepending /sd
-    if (uploadPath.startsWith("/")) {
-        uploadPath = uploadPath.substring(1);
-    }
-    // Remove trailing slash(es) to ensure clean path
-    while (uploadPath.endsWith("/")) {
-        uploadPath = uploadPath.substring(0, uploadPath.length() - 1);
-    }
-    current_path = std::string("/sd/") + uploadPath.c_str();
-    
+
+    // Navigate to the upload's folder ("/sd/fluidtouch/uploads", or "/sd" for the root)
+    current_path = remoteDir(upload_to_flash, upload_folder).c_str();
+
     // Invalidate cache to force a fresh directory listing
-    fluidnc_sd_cache.is_cached = false;
+    if (upload_to_flash) {
+        fluidnc_flash_cache.is_cached = false;
+    } else {
+        fluidnc_sd_cache.is_cached = false;
+    }
     
     // Refresh the file list
     refreshFileList(current_path);
@@ -1668,156 +1992,6 @@ void UITabFiles::navigateToUploadDirectory() {
 // ============================================================================
 // XModem (wired) upload dialog and progress
 // ============================================================================
-
-// Persistent storage for the XModem transfer parameters (must outlive dialogs)
-static char xmodem_local_path[256] = {};
-static char xmodem_remote_path[256] = {};
-static char xmodem_display_name[128] = {};
-
-void UITabFiles::showXModemDialog(const char* filename, const char* fullPath, size_t fileSize) {
-    if (xmodem_dialog) {
-        lv_obj_delete(xmodem_dialog);
-        xmodem_dialog = nullptr;
-    }
-
-    // Store transfer parameters in persistent buffers
-    strncpy(xmodem_local_path,  fullPath, sizeof(xmodem_local_path)  - 1);
-    strncpy(xmodem_display_name, filename, sizeof(xmodem_display_name) - 1);
-    // Default destination: /sd/<filename>
-    snprintf(xmodem_remote_path, sizeof(xmodem_remote_path), "/sd/%s", filename);
-
-    // --- Modal backdrop ---
-    xmodem_dialog = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(xmodem_dialog, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(xmodem_dialog, lv_color_make(0, 0, 0), 0);
-    lv_obj_set_style_bg_opa(xmodem_dialog, LV_OPA_70, 0);
-    lv_obj_set_style_border_width(xmodem_dialog, 0, 0);
-    lv_obj_clear_flag(xmodem_dialog, LV_OBJ_FLAG_SCROLLABLE);
-
-    // --- Dialog box ---
-    lv_obj_t *content = lv_obj_create(xmodem_dialog);
-    lv_obj_set_size(content, 640, 330);
-    lv_obj_center(content);
-    lv_obj_set_style_bg_color(content, UITheme::BG_MEDIUM, 0);
-    lv_obj_set_style_border_color(content, UITheme::ACCENT_PRIMARY, 0);
-    lv_obj_set_style_border_width(content, 3, 0);
-    lv_obj_set_style_pad_all(content, 20, 0);
-    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Title
-    lv_obj_t *title = lv_label_create(content);
-    lv_label_set_text(title, LV_SYMBOL_UPLOAD " XModem Transfer");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_22, 0);
-    lv_obj_set_style_text_color(title, UITheme::ACCENT_PRIMARY, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
-
-    // Filename row
-    lv_obj_t *lbl_file = lv_label_create(content);
-    lv_label_set_text_fmt(lbl_file, "File: %s", filename);
-    lv_obj_set_style_text_font(lbl_file, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl_file, UITheme::TEXT_LIGHT, 0);
-    lv_label_set_long_mode(lbl_file, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(lbl_file, 590);
-    lv_obj_align(lbl_file, LV_ALIGN_TOP_LEFT, 0, 42);
-
-    // Size row
-    lv_obj_t *lbl_size = lv_label_create(content);
-    char sizeText[48];
-    if (fileSize >= 1048576) snprintf(sizeText, sizeof(sizeText), "Size: %.2f MB", fileSize / 1048576.0f);
-    else snprintf(sizeText, sizeof(sizeText), "Size: %.1f KB", fileSize / 1024.0f);
-    lv_label_set_text(lbl_size, sizeText);
-    lv_obj_set_style_text_font(lbl_size, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl_size, UITheme::TEXT_LIGHT, 0);
-    lv_obj_align(lbl_size, LV_ALIGN_TOP_LEFT, 0, 76);
-
-    // Destination label + dropdown (SD / Flash)
-    lv_obj_t *lbl_dest_hdr = lv_label_create(content);
-    lv_label_set_text(lbl_dest_hdr, "Destination:");
-    lv_obj_set_style_text_font(lbl_dest_hdr, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl_dest_hdr, UITheme::TEXT_LIGHT, 0);
-    lv_obj_align(lbl_dest_hdr, LV_ALIGN_TOP_LEFT, 0, 112);
-
-    lv_obj_t *dest_dd = lv_dropdown_create(content);
-    lv_dropdown_set_options(dest_dd, "FluidNC SD Card (/sd/)\nFluidNC Flash (/localfs/)");
-    lv_dropdown_set_selected(dest_dd, 0);
-    lv_obj_set_size(dest_dd, 300, 44);
-    lv_obj_align(dest_dd, LV_ALIGN_TOP_LEFT, 160, 106);
-    lv_obj_set_style_text_font(dest_dd, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_bg_color(dest_dd, UITheme::BG_BUTTON, 0);
-    lv_obj_set_style_text_color(dest_dd, lv_color_white(), 0);
-    // Update remote path when destination changes
-    lv_obj_add_event_cb(dest_dd, [](lv_event_t *e) {
-        lv_obj_t *dd = (lv_obj_t*)lv_event_get_target(e);
-        uint16_t sel = lv_dropdown_get_selected(dd);
-        if (sel == 0) {
-            snprintf(xmodem_remote_path, sizeof(xmodem_remote_path), "/sd/%s", xmodem_display_name);
-        } else {
-            snprintf(xmodem_remote_path, sizeof(xmodem_remote_path), "/localfs/%s", xmodem_display_name);
-        }
-        Serial.printf("[Files] XModem destination: %s\n", xmodem_remote_path);
-    }, LV_EVENT_VALUE_CHANGED, nullptr);
-
-    // Resolved destination path label (live update)
-    lv_obj_t *lbl_dest = lv_label_create(content);
-    lv_label_set_text_fmt(lbl_dest, "Path: /sd/%s", filename);
-    lv_obj_set_style_text_font(lbl_dest, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_dest, UITheme::TEXT_DISABLED, 0);
-    lv_label_set_long_mode(lbl_dest, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(lbl_dest, 590);
-    lv_obj_align(lbl_dest, LV_ALIGN_TOP_LEFT, 0, 158);
-
-    // Button row
-    lv_obj_t *btn_row = lv_obj_create(content);
-    lv_obj_set_size(btn_row, 590, 60);
-    lv_obj_align(btn_row, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(btn_row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(btn_row, 0, 0);
-    lv_obj_set_style_pad_all(btn_row, 0, 0);
-    lv_obj_clear_flag(btn_row, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Transfer button
-    lv_obj_t *btn_xfer = lv_btn_create(btn_row);
-    lv_obj_set_size(btn_xfer, 200, 50);
-    lv_obj_set_style_bg_color(btn_xfer, UITheme::ACCENT_PRIMARY, 0);
-    lv_obj_add_event_cb(btn_xfer, [](lv_event_t *e) {
-        // Close confirmation dialog
-        if (xmodem_dialog) {
-            lv_obj_delete(xmodem_dialog);
-            xmodem_dialog = nullptr;
-        }
-
-        // Show progress dialog then start the task
-        lv_timer_create([](lv_timer_t *timer) {
-            showXModemProgress(xmodem_display_name);
-            if (!FluidNCClient::startXModemUpload(xmodem_local_path, xmodem_remote_path,
-                                                   xmodem_display_name)) {
-                closeXModemProgress(false, "Failed to start transfer task");
-            }
-            lv_timer_delete(timer);
-        }, 50, nullptr);
-    }, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t *lbl_xfer = lv_label_create(btn_xfer);
-    lv_label_set_text(lbl_xfer, LV_SYMBOL_UPLOAD " Transfer");
-    lv_obj_set_style_text_font(lbl_xfer, &lv_font_montserrat_18, 0);
-    lv_obj_center(lbl_xfer);
-
-    // Cancel button
-    lv_obj_t *btn_cancel = lv_btn_create(btn_row);
-    lv_obj_set_size(btn_cancel, 160, 50);
-    lv_obj_set_style_bg_color(btn_cancel, UITheme::BG_BUTTON, 0);
-    lv_obj_add_event_cb(btn_cancel, [](lv_event_t *e) {
-        if (xmodem_dialog) {
-            lv_obj_delete(xmodem_dialog);
-            xmodem_dialog = nullptr;
-        }
-    }, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t *lbl_cancel = lv_label_create(btn_cancel);
-    lv_label_set_text(lbl_cancel, "Cancel");
-    lv_obj_set_style_text_font(lbl_cancel, &lv_font_montserrat_18, 0);
-    lv_obj_center(lbl_cancel);
-}
 
 void UITabFiles::showXModemProgress(const char* filename) {
     if (xmodem_progress_dialog) {
@@ -1838,7 +2012,7 @@ void UITabFiles::showXModemProgress(const char* filename) {
 
     // Dialog box
     lv_obj_t *content = lv_obj_create(xmodem_progress_dialog);
-    lv_obj_set_size(content, 600, 280);
+    lv_obj_set_size(content, 600, 320);
     lv_obj_center(content);
     lv_obj_set_style_bg_color(content, UITheme::BG_MEDIUM, 0);
     lv_obj_set_style_border_color(content, UITheme::ACCENT_PRIMARY, 0);
@@ -1877,6 +2051,8 @@ void UITabFiles::showXModemProgress(const char* filename) {
 
     xmodem_progress_label = lv_label_create(content);
     lv_label_set_text(xmodem_progress_label, "Waiting for FluidNC...");
+    lv_label_set_long_mode(xmodem_progress_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(xmodem_progress_label, 550);
     lv_obj_set_style_text_font(xmodem_progress_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(xmodem_progress_label, UITheme::TEXT_LIGHT, 0);
     lv_obj_align(xmodem_progress_label, LV_ALIGN_TOP_LEFT, 0, 155);
@@ -1928,10 +2104,39 @@ void UITabFiles::closeXModemProgress(bool success, const char* error) {
     if (n > 0) {
         lv_obj_delete(lv_obj_get_child(content, n - 1)); // remove note label
     }
-    lv_obj_t *btn_close = lv_btn_create(content);
+    lv_obj_t *btn_row = lv_obj_create(content);
+    lv_obj_set_size(btn_row, LV_PCT(100), 60);
+    lv_obj_align(btn_row, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_border_width(btn_row, 0, 0);
+    lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_all(btn_row, 0, 0);
+    lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btn_row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(btn_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    if (success) {
+        // Show the destination folder in the file list
+        lv_obj_t *btn_goto = lv_btn_create(btn_row);
+        lv_obj_set_size(btn_goto, 220, 50);
+        lv_obj_set_style_bg_color(btn_goto, UITheme::ACCENT_PRIMARY, 0);
+        lv_obj_add_event_cb(btn_goto, [](lv_event_t *e) {
+            if (xmodem_progress_dialog) {
+                lv_obj_delete(xmodem_progress_dialog);
+                xmodem_progress_dialog = nullptr;
+                xmodem_progress_bar    = nullptr;
+                xmodem_progress_label  = nullptr;
+            }
+            navigateToUploadDirectory();
+        }, LV_EVENT_CLICKED, nullptr);
+        lv_obj_t *gl = lv_label_create(btn_goto);
+        lv_label_set_text(gl, LV_SYMBOL_DIRECTORY " Open Folder");
+        lv_obj_set_style_text_font(gl, &lv_font_montserrat_18, 0);
+        lv_obj_center(gl);
+    }
+
+    lv_obj_t *btn_close = lv_btn_create(btn_row);
     lv_obj_set_size(btn_close, 160, 50);
-    lv_obj_align(btn_close, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_obj_set_style_bg_color(btn_close, success ? UITheme::BTN_PLAY : UITheme::BG_BUTTON, 0);
+    lv_obj_set_style_bg_color(btn_close, UITheme::BG_BUTTON, 0);
     lv_obj_add_event_cb(btn_close, [](lv_event_t *e) {
         if (xmodem_progress_dialog) {
             lv_obj_delete(xmodem_progress_dialog);
