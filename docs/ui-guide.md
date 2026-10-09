@@ -43,16 +43,19 @@ On startup, FluidTouch displays a splash screen before proceeding to machine sel
 
 ![Machine Selection](./images/machine-selection.png)
 
-The machine selection screen appears after the splash screen when you first power on FluidTouch. It displays all configured machines (up to 4) with their names, WiFi networks, and connection status. Tap any machine to connect.
+The machine selection screen appears after the splash screen when you first power on FluidTouch. It displays all configured machines (up to 4) with their names and connection details: the WiFi network and address, the paired FluidNC hostname for ESP-NOW, or the baud rate for UART and USB CDC. Tap any machine to connect.
 
 If no machines are configured, you'll see a prompt to add your first machine.
 
 Each machine configuration stores:
 - Machine name
-- Connection type (currently only Wireless is supported)
-- WiFi SSID and password
-- FluidNC IP address or hostname
-- WebSocket port (default: 81)
+- Connection type: WiFi, ESP-NOW, UART or USB CDC (UART and USB CDC are Advance only)
+- For WiFi: SSID, password, FluidNC IP address or hostname, and WebSocket port (default: 81)
+- For ESP-NOW: the pairing with FluidNC
+- For UART and USB CDC: the baud rate
+- Whether to load this machine at startup
+
+See the [Configuration Guide](./configuration.md#connection-types) for setting up each connection type.
 
 ### Machine Selection Edit Mode
 
@@ -72,15 +75,20 @@ Clicking the "Edit" button enters edit mode, which allows you to reorder, edit, 
 
 Modal dialog for adding or editing machine configurations:
 
+The fields shown depend on the selected connection type.
+
 **Left Column (64% width):**
 - **Name:** Machine identifier (32 characters max)
-- **SSID:** WiFi network name
-- **FluidNC URL:** IP address or hostname (e.g., 192.168.1.100 or fluidnc.local)
+- **WiFi SSID** and **FluidNC URL** (WiFi): network name, and IP address or hostname (e.g., 192.168.1.100 or fluidnc.local)
+- **ESP-NOW Pairing** panel (ESP-NOW): pairing status, instructions and a **Pair** button
 
 **Right Column (33% width):**
-- **Connection:** Wireless (only option currently)
-- **Password:** WiFi password
-- **Port:** WebSocket port (default: 81)
+- **Connection:** WiFi, ESP-NOW, UART or USB CDC (UART and USB CDC are Advance only)
+- **Password** and **Port** (WiFi): WiFi password and WebSocket port (default: 81)
+- **Baud Rate** (UART and USB CDC): must match FluidNC's setting
+
+**Below the columns:**
+- **Load this machine at startup (skips the machine list)**
 
 **Buttons:**
 - **Save** (bottom left) - Save configuration
@@ -107,7 +115,7 @@ The status bar at the top displays:
 
 **Right Section** (clickable - restart to switch machines):
 - Machine name with connection symbol (top line, blue)
-- WiFi network name (bottom line, cyan)
+- Connection (bottom line, cyan): the WiFi network name, or ESP-NOW, UART or USB CDC
 
 ---
 
@@ -322,7 +330,7 @@ Browse and manage files on FluidNC SD card and flash storage:
 - Navigate folders (tap to open)
 - View file sizes
 - Play files (GCode programs)
-- Upload files from browser
+- Upload files from the display's SD card to FluidNC (not available over ESP-NOW)
 - Delete files and folders
 
 **File List:**
@@ -335,23 +343,33 @@ Browse and manage files on FluidNC SD card and flash storage:
 
 ![File Upload Dialog](./images/file-upload-dialog.png)
 
-Modal dialog for uploading files to FluidNC:
+Copies a file from the display's SD card to FluidNC's SD card or flash. The dialog is the same for every connection type; only the transfer method differs:
+
+| Connection | Transfer |
+|---|---|
+| WiFi | HTTP |
+| UART, USB CDC | XModem |
+| ESP-NOW | Not available (no Upload buttons) |
 
 **Steps:**
-1. Tap "Upload" button in Files tab
-2. Dialog shows current directory path
-3. Displays web URL with QR code
-4. Open URL in browser on computer/phone
-5. Select file to upload
-6. Progress bar shows upload status
-7. File appears in file list when complete
+1. Choose **Display SD** in the Files tab's storage list
+2. Tap **Upload** next to the file
+3. Choose the **Destination**: **FluidNC SD Card** or **FluidNC Flash**
+4. The **Folder** defaults to `/fluidtouch/uploads/`. To use another, tap **Change**: a folder browser laid out like the Files tab lists that volume's folders (files are shown dimmed). Tap a folder to open it, **Up** to go back, and **Select This Folder** to use the one you're in. The full path is shown below the folder.
+5. Tap **Upload**
+
+The destination and folder are remembered for the next upload until the display restarts.
+
+**Folders:**
+- Uploads only go to a folder that already exists; the folder browser only offers existing folders. FluidTouch also checks before sending and explains if the folder is missing.
+- The exception is the default `/fluidtouch/uploads/` folder, which a WiFi upload creates if needed. Over UART or USB CDC, FluidNC can't create folders, so create it once from FluidNC's WebUI.
 
 **Upload Progress:**
 - Shows current/total bytes transferred
 - Percentage complete
 - Progress bar visual
 - "Reset device to cancel upload" during transfer
-- "Close" button after completion
+- After a successful upload, **Open Folder** shows the destination folder in the file list; **Close** returns to the file list
 
 ### Delete Confirmation
 

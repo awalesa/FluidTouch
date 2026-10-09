@@ -27,6 +27,7 @@
 **Optional:**
 - Elecrow CrowPanel 7" ESP32-S3 HMI Display:
   - [Basic version](https://www.awin1.com/cread.php?awinmid=82721&awinaffid=2663106&ued=https%3A%2F%2Fwww.elecrow.com%2Fesp32-display-7-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html) (4MB flash) *(affiliate link)*
+    - ⚠️ Minimal testing; support may be dropped in a future release
     - 800×480 TN RGB TFT LCD
     - PWM backlight control
     - External battery connector
@@ -39,7 +40,7 @@
     - ⚠️ **Advance Version Compatibility:** Supports hardware Versions 1.2 through 1.5
     - **DIP Switch Configuration:** All versions require DIP switches S0 and S1 set to position 1
     - **Versions 1.3, 1.4 and 1.5:** Fully tested (use `elecrow-crowpanel-7-advance-v13` build environment for all three; v1.4 only changed the boot/reset buttons and v1.5 only changed the silkscreen)
-    - **Version 1.2:** ⚠️ Untested (use `elecrow-crowpanel-7-advance-v12` build environment)
+    - **Version 1.2:** ⚠️ Untested, and support may be dropped in a future release (use `elecrow-crowpanel-7-advance-v12` build environment)
 - Serial terminal (PlatformIO includes one)
 - Chrome/Edge browser (for ESP Web Tools testing)
 

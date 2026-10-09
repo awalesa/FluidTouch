@@ -131,7 +131,7 @@ jobs:
           
           Select your hardware variant during installation:
           - **Basic**: Elecrow CrowPanel 7" Basic (4MB flash, TN LCD, PWM backlight)
-          - **Advance v1.3**: Elecrow CrowPanel 7" Advance v1.3 (16MB flash, IPS LCD, continuous brightness 0-245)
+          - **Advance v1.3+**: Elecrow CrowPanel 7" Advance v1.3, v1.4 and v1.5 (16MB flash, IPS LCD, continuous brightness 0-245)
           - **Advance v1.2**: Elecrow CrowPanel 7" Advance v1.2 (16MB flash, IPS LCD, discrete brightness 0x05-0x10)
           
           ### Manual Installation
@@ -144,9 +144,8 @@ jobs:
           
           ### Installation Notes
           - **IMPORTANT**: Choose the correct firmware for your hardware variant
-          - First-time installation will erase existing data
-          - WiFi credentials will need to be reconfigured
-          - Machine configurations stored in preferences
+          - **Updating keeps your settings**: machines, macros and preferences carry over from earlier versions. When the web installer asks whether to erase the device, choose **not** to erase.
+          - Erasing (or a first-time installation) clears all stored settings. Export them first from **Settings → Backup** to restore them afterwards; WiFi passwords and ESP-NOW pairings aren't included in the export and must be re-entered.
         draft: false
         prerelease: false
       env:

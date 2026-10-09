@@ -74,7 +74,7 @@ If you have a settings backup file from another FluidTouch device or a previous 
 3. Tap **Clear All Settings** button
 4. Confirm the warning dialog
 5. Device restarts and auto-imports settings
-6. Configure WiFi passwords for wireless machines
+6. Configure WiFi passwords for WiFi machines, and pair ESP-NOW machines again
 
 ### After Import
 

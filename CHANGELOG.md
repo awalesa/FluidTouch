@@ -5,6 +5,59 @@ All notable changes to FluidTouch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - TBD
+
+### Added
+
+- **ESP-NOW Connection** - Connect to FluidNC directly over ESP-NOW, with no WiFi network needed (requires FluidNC v4.1.0 or later)
+  - Pair from the machine editor: tap **Pair**, then run `$espnow/pair` on FluidNC within 60 seconds
+  - Machine cards show the paired FluidNC hostname, or "Not paired"
+  - File upload isn't available over ESP-NOW
+- **Wired UART Connection** (Advance only) - Connect to FluidNC through the display's UART0 header (TX=43, RX=44), which also powers the display
+  - Unplug the display's USB-C while wired; the debug console is off in this mode
+  - The baud rate must match FluidNC's `uartN: baud:` setting
+  - Upload files from the display's SD card to FluidNC's SD card or flash over XModem
+  - FluidNC v4.1.1 or later is recommended so FluidTouch re-syncs when FluidNC restarts
+- **Wired USB CDC Connection** (Advance only) - Connect to FluidNC's USB host port through the display's USB-C jack
+  - The baud rate must match FluidNC's `uart3: usb_host: baud:` setting
+  - Upload files from the display's SD card to FluidNC's SD card or flash over XModem
+- **Upload Destination** - The upload dialog lets you choose FluidNC's SD card or flash and the folder, for WiFi as well as wired uploads
+  - Pick an existing folder with a folder browser laid out like the Files tab
+  - Defaults to `/fluidtouch/uploads/`; the choice is remembered until restart
+  - Uploads only go to existing folders, except the default folder, which WiFi uploads create if needed
+  - **Open Folder** after a successful upload shows the destination in the file list
+- **Load This Machine at Startup** - Option in the machine editor that skips the machine list and connects straight to this machine (on by default for new wired machines)
+- **Axis Configuration** - Turn the X, Y and Z axes on or off per machine (Settings → General), alongside the existing A axis switch
+  - Status tab hides the rows of disabled axes
+  - Machines with only the X axis get a single **Main** tab: work position with jog buttons, saved positions (up to 8, tap to go, long-press to delete) and STOP / Home X / Zero X / Unlock buttons
+  - Settings backups now include each machine's axis configuration
+- **3D Printed Case and Stand** - FreeCAD source and print-ready files for a CrowPanel Advance 7" case with room for a large battery, plus a matching table stand, in [`hardware/`](hardware/)
+- **Advance v1.4 and v1.5** - Confirmed supported; they use the same firmware as v1.3
+- **Desktop Simulator** - Run and develop the UI on a PC, connected to a real or fake FluidNC controller (see [`sim/README.md`](sim/README.md))
+
+### Changed
+
+- **Machine Editor** - Shows only the fields the selected connection type uses; machine cards show the baud rate for wired connections
+- **Startup Machine** - With the machine list turned off, FluidTouch now loads the last machine used instead of the first configured one
+- **G-code Parser State on Connect** - FluidTouch requests `$G` as soon as it connects, so the work coordinate system, units, tool, feed and spindle are correct right away when connecting mid-session (thanks @junchao98, #60)
+- **Unlock Button Color** - Unlock buttons are now dark cyan, so they no longer look like the X axis color
+- **Official ESP32 Platform** - Moved to the official pioarduino platform (Arduino 3.3.12, ESP-IDF 5.5.5)
+- **LovyanGFX 1.2.29** - Updated display driver
+
+### Fixed
+
+- **Wrong Alarm Message** - Alarm popups show the correct message, or "Unknown Alarm" for unrecognized alarm numbers (#56)
+- **File Upload with mDNS** - Uploading files works when the machine is addressed by an mDNS name such as `fluidnc.local` (#55, thanks @Jfhow)
+- **Messages Arriving Together** - FluidNC v4 output is now handled line by line, so status reports sent together with other messages are no longer missed (e.g. the HOLD popup after M0 appeared late, and the Files list loaded slowly on port 80)
+- **Busy During Dwells** - A running file job counts as busy even when FluidNC reports Idle during a G4 dwell, so the Files list, Go To position fields and screen dimming don't act mid-job
+- **Failed Upload Dialog** - A failed WiFi upload now shows the error and a Close button; previously the dialog couldn't be dismissed
+- **Position Fields Bouncing** - The work and machine position fields no longer jump while editing
+
+### Known Issues
+
+- **Basic and Advance v1.2** - This release has had minimal testing on the Basic display and none on the Advance v1.2. Support for both may be dropped in a future release.
+- **USB CDC needs a newer FluidNC** - FluidNC v4.1.1 and earlier can attach to the display's USB serial chip with the wrong driver, so the connection doesn't work reliably. The fix ([bdring/FluidNC#1875](https://github.com/bdring/FluidNC/pull/1875)) is merged but not yet in a FluidNC release. Until then, USB CDC needs a FluidNC build from its main branch. UART and ESP-NOW are not affected.
+
 ## [1.0.5] - 2026-04-24
 
 ### Added
