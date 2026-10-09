@@ -197,7 +197,7 @@ void UITabSettingsGeneral::create(lv_obj_t *tab) {
 
     // Description text for axis configuration (X/Y/Z default on, A default off)
     lv_obj_t *axis_desc_label = lv_label_create(tab);
-    lv_label_set_text(axis_desc_label, "Turn off unused axes (e.g. a\nmiter saw fence). Turn on A for\na rotary axis. Requires restart.");
+    lv_label_set_text(axis_desc_label, "Turn off unused axes.\nTurn on A for a rotary axis.\nRequires restart.");
     lv_obj_set_style_text_font(axis_desc_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(axis_desc_label, UITheme::TEXT_DISABLED, 0);
     lv_obj_set_pos(axis_desc_label, 400, 295);  // Right column

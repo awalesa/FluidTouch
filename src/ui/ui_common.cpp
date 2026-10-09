@@ -1270,8 +1270,8 @@ void UICommon::checkConnectionTimeout() {
                 snprintf(error_msg, sizeof(error_msg),
                         "Could not connect to machine:\n%s\n\nUSB CDC (UART0 via USB-C jack @ %d baud)\n"
                         "Bytes received: %d\n\n"
-                        "Check that the baud rate matches FluidNC's\n"
-                        "uart3: usb_host: baud: setting in config.yaml.",
+                        "Baud must match uart3: usb_host: baud: in FluidNC.\n"
+                        "Needs a FluidNC release newer than v4.1.1.",
                         config.name, (int)config.uart_baud_rate, (int)rxBytes);
             } else if (config.connection_type == CONN_ESPNOW) {
                 snprintf(error_msg, sizeof(error_msg),
