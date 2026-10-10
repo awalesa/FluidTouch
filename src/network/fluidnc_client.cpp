@@ -5,7 +5,6 @@
 #include "debug_log.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
-#ifdef HARDWARE_ADVANCE
 #include <SD.h>
 // Both serial modes use UART0 (GPIO43 TX / GPIO44 RX), which is also the debug
 // console (`Serial`):
@@ -25,7 +24,6 @@ static HardwareSerial fluidncUart(0);
 // Currently-active serial stream (set on connect, used by all read/write paths).
 // nullptr means no serial connection is active (WebSocket mode or disconnected).
 static Stream*       activeStream  = nullptr;
-#endif
 
 using namespace websockets;
 
@@ -83,7 +81,6 @@ bool FluidNCClient::connect(const MachineConfig &config) {
     // Store config
     currentConfig = config;
     
-#ifdef HARDWARE_ADVANCE
     if (config.connection_type == CONN_UART || config.connection_type == CONN_USB_CDC) {
         // Both modes are ESP32 UART0 (GPIO43 TX / GPIO44 RX), the debug console:
         // UART wires FluidNC to the board's UART0 header (which can also power
@@ -151,11 +148,8 @@ bool FluidNCClient::connect(const MachineConfig &config) {
         currentStatus.is_connected = false;
         return true;
     }
-#endif
 
-#ifdef HARDWARE_ADVANCE
     activeStream = nullptr;
-#endif
 
     if (config.connection_type == CONN_ESPNOW) {
         activeSerialMode = CONN_ESPNOW;
@@ -268,7 +262,6 @@ void FluidNCClient::disconnect() {
         espnowLinkUp = false;
         rxLineBuffer = "";
     } else
-#ifdef HARDWARE_ADVANCE
     if (activeSerialMode == CONN_UART || activeSerialMode == CONN_USB_CDC) {
         // Close UART0 but leave the debug console off (and muted) until the
         // next boot: FluidNC is still wired to it, so anything printed would
@@ -278,7 +271,6 @@ void FluidNCClient::disconnect() {
         activeStream = nullptr;
         uartRxPos = 0;
     } else
-#endif
     if (webSocket.available()) {
         webSocket.close();
     }
@@ -304,11 +296,9 @@ bool FluidNCClient::isConnected() {
     if (activeSerialMode == CONN_ESPNOW) {
         return currentStatus.is_connected && espnowLink().connected();
     }
-#ifdef HARDWARE_ADVANCE
     if (activeSerialMode == CONN_UART || activeSerialMode == CONN_USB_CDC) {
         return currentStatus.is_connected;
     }
-#endif
     return currentStatus.is_connected && webSocket.available();
 }
 
@@ -317,27 +307,15 @@ bool FluidNCClient::isAutoReporting() {
 }
 
 bool FluidNCClient::isUartMode() {
-#ifdef HARDWARE_ADVANCE
     return activeSerialMode == CONN_UART;
-#else
-    return false;
-#endif
 }
 
 bool FluidNCClient::isUsbCdcMode() {
-#ifdef HARDWARE_ADVANCE
     return activeSerialMode == CONN_USB_CDC;
-#else
-    return false;
-#endif
 }
 
 bool FluidNCClient::isSerialMode() {
-#ifdef HARDWARE_ADVANCE
     return activeSerialMode == CONN_UART || activeSerialMode == CONN_USB_CDC;
-#else
-    return false;
-#endif
 }
 
 bool FluidNCClient::isWiFiMode() {
@@ -356,10 +334,9 @@ uint32_t FluidNCClient::getUartBytesReceived() {
 }
 
 // ============================================================================
-// XModem upload support (Advance hardware only)
+// XModem upload support (UART / USB CDC)
 // ============================================================================
 
-#ifdef HARDWARE_ADVANCE
 struct XModemTaskParams {
     char localPath[256];
     char remotePath[256];
@@ -442,15 +419,10 @@ void FluidNCClient::xmodemUploadTask(void* pvParams) {
     xmodemTaskHandle = nullptr;
     vTaskDelete(nullptr);
 }
-#endif // HARDWARE_ADVANCE
 
 bool FluidNCClient::startXModemUpload(const char* localPath,
                                        const char* remotePath,
                                        const char* filename) {
-#ifndef HARDWARE_ADVANCE
-    LOG_PRINTLN("[XModem] Not supported on Basic hardware");
-    return false;
-#else
     if (activeSerialMode != CONN_UART && activeSerialMode != CONN_USB_CDC) {
         LOG_PRINTLN("[XModem] Not in a serial (UART or USB CDC) mode");
         return false;
@@ -498,7 +470,6 @@ bool FluidNCClient::startXModemUpload(const char* localPath,
 
     LOG_PRINTF("[XModem] Upload task created: %s -> %s\n", localPath, remotePath);
     return true;
-#endif
 }
 
 bool FluidNCClient::isXModemTransferActive() {
@@ -529,7 +500,6 @@ void FluidNCClient::loop() {
         return;
     }
 
-#ifdef HARDWARE_ADVANCE
     if (activeStream != nullptr) {
         // While an XModem transfer task is running, skip normal line parsing
         if (isXModemTransfer) return;
@@ -572,7 +542,6 @@ void FluidNCClient::loop() {
         }
         return;
     }
-#endif
     
     // Handle WebSocket events - ArduinoWebsockets handles polling internally
     webSocket.poll();
@@ -669,12 +638,10 @@ void FluidNCClient::sendRaw(const char* data) {
         espnowLink().write((const uint8_t*)data, strlen(data));
         return;
     }
-#ifdef HARDWARE_ADVANCE
     if (activeStream != nullptr) {
         activeStream->print(data);
         return;
     }
-#endif
     webSocket.send(data);
 }
 
@@ -1355,7 +1322,6 @@ void FluidNCClient::extractString(const char* str, const char* key, char* dest, 
     dest[len] = '\0';
 }
 
-#ifdef HARDWARE_ADVANCE
 void FluidNCClient::processUartLine(char* line) {
     const char* payload = line;
 
@@ -1388,9 +1354,6 @@ void FluidNCClient::processUartLine(char* line) {
         currentStatus.last_message[sizeof(currentStatus.last_message) - 1] = '\0';
     }
 }
-#else
-void FluidNCClient::processUartLine(char* line) { (void)line; }
-#endif
 
 void FluidNCClient::attemptEnableAutoReporting() {
     LOG_PRINTLN("[FluidNC] Attempting to enable automatic reporting (250ms)");

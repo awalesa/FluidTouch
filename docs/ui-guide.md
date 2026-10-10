@@ -49,7 +49,7 @@ If no machines are configured, you'll see a prompt to add your first machine.
 
 Each machine configuration stores:
 - Machine name
-- Connection type: WiFi, ESP-NOW, UART or USB CDC (UART and USB CDC are Advance only)
+- Connection type: WiFi, ESP-NOW, UART or USB CDC (UART is Advance only)
 - For WiFi: SSID, password, FluidNC IP address or hostname, and WebSocket port (default: 81)
 - For ESP-NOW: the pairing with FluidNC
 - For UART and USB CDC: the baud rate
@@ -83,7 +83,7 @@ The fields shown depend on the selected connection type.
 - **ESP-NOW Pairing** panel (ESP-NOW): pairing status, instructions and a **Pair** button
 
 **Right Column (33% width):**
-- **Connection:** WiFi, ESP-NOW, UART or USB CDC (UART and USB CDC are Advance only)
+- **Connection:** WiFi, ESP-NOW, UART or USB CDC (UART is Advance only)
 - **Password** and **Port** (WiFi): WiFi password and WebSocket port (default: 81)
 - **Baud Rate** (UART and USB CDC): must match FluidNC's setting
 

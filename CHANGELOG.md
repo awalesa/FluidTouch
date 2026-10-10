@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The baud rate must match FluidNC's `uartN: baud:` setting
   - Upload files from the display's SD card to FluidNC's SD card or flash over XModem
   - FluidNC v4.1.1 or later is recommended so FluidTouch re-syncs when FluidNC restarts
-- **Wired USB CDC Connection** (Advance only) - Connect to FluidNC's USB host port through the display's USB-C jack
+- **Wired USB CDC Connection** - Connect to FluidNC's USB host port through the display's USB-C jack
   - The baud rate must match FluidNC's `uart3: usb_host: baud:` setting
   - Upload files from the display's SD card to FluidNC's SD card or flash over XModem
 - **Upload Destination** - The upload dialog lets you choose FluidNC's SD card or flash and the folder, for WiFi as well as wired uploads

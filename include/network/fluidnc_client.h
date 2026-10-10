@@ -161,7 +161,6 @@ public:
     // remotePath : destination on FluidNC (e.g. "/sd/myfile.nc" or "/localfs/myfile.nc")
     // filename   : display name shown in the progress dialog
     // Returns false immediately if not in a serial mode or a transfer is already running.
-    // Only available on Advance hardware (#ifdef HARDWARE_ADVANCE).
     static bool startXModemUpload(const char* localPath, const char* remotePath,
                                   const char* filename);
 
@@ -240,7 +239,7 @@ private:
     static uint16_t uartRxPos;
     static uint32_t uartBytesReceived;  // Total bytes received over serial stream (debug counter)
 
-    // XModem transfer state and task (Advance hardware only)
+    // XModem transfer state and task (UART / USB CDC)
     static XModemTransferState xmodemTransferState;
     static bool isXModemTransfer;       // Pauses normal UART parsing while true
     static TaskHandle_t xmodemTaskHandle;

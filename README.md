@@ -96,7 +96,7 @@ Detailed documentation is available in the [`docs/`](./docs/) folder:
 2. On the "Select Machine" screen, click the Edit button.
 3. Click the "Add" button to add a new machine:
    - Name
-   - Connection: WiFi, ESP-NOW, UART or USB CDC (UART and USB CDC are Advance only). See the [Configuration Guide](./docs/configuration.md#connection-types) for ESP-NOW pairing, wiring and the FluidNC settings each one needs.
+   - Connection: WiFi, ESP-NOW, UART or USB CDC (UART is Advance only). See the [Configuration Guide](./docs/configuration.md#connection-types) for ESP-NOW pairing, wiring and the FluidNC settings each one needs.
    - For WiFi:
      - WiFi SSID and Password (machine-specific)
      - FluidNC IP address or hostname (e.g. 192.168.0.1 or fluidnc.local)

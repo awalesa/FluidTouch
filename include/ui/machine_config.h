@@ -10,9 +10,9 @@
 // CONN_UART/CONN_WIFI keep the original CONN_WIRED/CONN_WIRELESS numeric values
 // so existing machine configurations in NVS continue to load correctly.
 enum ConnectionType {
-    CONN_UART    = 0,  // Hardware UART (legacy "Wired") - Advance hardware only
+    CONN_UART    = 0,  // Hardware UART (legacy "Wired") - Advance only (needs its 5 V UART-IN header)
     CONN_WIFI    = 1,  // WiFi WebSocket (legacy "Wireless")
-    CONN_USB_CDC = 2,  // Native USB CDC device - Advance hardware only
+    CONN_USB_CDC = 2,  // USB serial chip on UART0 via the USB-C jack - Advance and Basic
     CONN_ESPNOW  = 3   // ESP-NOW direct radio link (FluidNC v4.1.0+; the protocol dates from v4.0.4, which had issues)
 };
 

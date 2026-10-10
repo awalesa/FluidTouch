@@ -25,8 +25,8 @@
 2. **Connection:** How FluidTouch talks to FluidNC. The editor shows only the fields the selected type uses. See [Connection Types](#connection-types) for each one's settings and FluidNC setup.
    - **WiFi** - over your WiFi network
    - **ESP-NOW** - a direct radio link, no WiFi network needed (FluidNC v4.1.0 or later)
-   - **UART** - wired, through the display's UART0 header (Advance only)
-   - **USB CDC** - wired, through the display's USB-C jack to FluidNC's USB host port (Advance only)
+   - **UART** - wired, through the display's UART0 header (Advance only; the Basic has no 5 V UART-IN header)
+   - **USB CDC** - wired, through the display's USB-C jack to FluidNC's USB host port
 
 3. **Load this machine at startup:** Skips the machine list at power-on and connects straight to this machine
    - Turning it on and saving turns off the machine selection screen (Settings → General → Machine Selection → Show)

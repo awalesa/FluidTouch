@@ -52,13 +52,14 @@ bool UIMachineSelect::espnow_pair_failed = false;
 lv_obj_t *UIMachineSelect::delete_dialog = nullptr;
 int UIMachineSelect::deleting_index = -1;
 
-// Connection dropdown entries, in order
+// Connection dropdown entries, in order. UART needs the Advance's 5 V UART-IN
+// header; the Basic has none, but USB CDC works through its USB-C jack.
 #ifdef HARDWARE_ADVANCE
 static const ConnectionType CONNECTION_OPTIONS[] = {CONN_WIFI, CONN_UART, CONN_USB_CDC, CONN_ESPNOW};
 static const char *CONNECTION_OPTION_TEXT = "WiFi\nUART\nUSB CDC\nESP-NOW";
 #else
-static const ConnectionType CONNECTION_OPTIONS[] = {CONN_WIFI, CONN_ESPNOW};
-static const char *CONNECTION_OPTION_TEXT = "WiFi\nESP-NOW";
+static const ConnectionType CONNECTION_OPTIONS[] = {CONN_WIFI, CONN_USB_CDC, CONN_ESPNOW};
+static const char *CONNECTION_OPTION_TEXT = "WiFi\nUSB CDC\nESP-NOW";
 #endif
 static const uint16_t CONNECTION_OPTION_COUNT = sizeof(CONNECTION_OPTIONS) / sizeof(CONNECTION_OPTIONS[0]);
 

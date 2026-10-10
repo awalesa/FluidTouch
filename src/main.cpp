@@ -35,7 +35,6 @@ bool g_serialMuted = false;
 // would go straight into FluidNC, and bytes such as '!' (feed hold) or
 // 0x80-0xBF (overrides) are realtime commands to it.
 static bool lastMachineUsesUart0() {
-#ifdef HARDWARE_ADVANCE
     Preferences prefs;
     prefs.begin(PREFS_NAMESPACE, true);
     int index = prefs.getInt("sel_machine", -1);
@@ -46,9 +45,6 @@ static bool lastMachineUsesUart0() {
     }
     prefs.end();
     return type == CONN_UART || type == CONN_USB_CDC;
-#else
-    return false;
-#endif
 }
 
 void setup()
