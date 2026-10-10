@@ -1,5 +1,6 @@
 #include "core/power_manager.h"
 #include "network/fluidnc_client.h"
+#include "ui/upload_manager.h"
 #include "config.h"
 #include "debug_log.h"
 #include <Preferences.h>
@@ -56,8 +57,11 @@ void PowerManager::update(int machine_state) {
     }
     
     // Power management ONLY applies to IDLE and DISCONNECTED states
-    // All other states (RUN, ALARM, HOLD, JOG, etc.) stay at full brightness
-    if (machine_state != STATE_IDLE && machine_state != STATE_DISCONNECTED) {
+    // All other states (RUN, ALARM, HOLD, JOG, etc.) stay at full brightness,
+    // and so does an upload (FluidNC reports Idle meanwhile; deep sleep would
+    // cut the transfer off)
+    bool uploading = UploadManager::isUploading() || FluidNCClient::isXModemTransferActive();
+    if ((machine_state != STATE_IDLE && machine_state != STATE_DISCONNECTED) || uploading) {
         if (current_state != FULL_BRIGHTNESS) {
             enterFullBrightness();
         }
