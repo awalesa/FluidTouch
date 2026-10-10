@@ -410,7 +410,9 @@ void FluidNCClient::xmodemUploadTask(void* pvParams) {
         fileSize,
         [](size_t sent, size_t total) {
             xmodemTransferState.bytesSent = sent;
-        }
+        },
+        xmodemTransferState.error,
+        sizeof(xmodemTransferState.error)
     );
 
     file.close();

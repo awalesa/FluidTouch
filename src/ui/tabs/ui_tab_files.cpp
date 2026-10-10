@@ -1188,6 +1188,28 @@ static lv_obj_t *upload_dest_dd = nullptr;
 static lv_obj_t *upload_folder_label = nullptr;
 static lv_obj_t *upload_path_label = nullptr;
 
+// "120 KB / 480 KB (25%)  |  14.2 KB/s" (the rate once there's enough to measure)
+static void formatTransferProgress(char *buf, size_t len, size_t sent, size_t total,
+                                   size_t rateBytes, uint32_t rateMs) {
+    int pct = total > 0 ? (int)((sent * 100) / total) : 0;
+    int n;
+    if (total >= 1048576) {
+        n = snprintf(buf, len, "%.2f MB / %.2f MB (%d%%)", sent / 1048576.0f, total / 1048576.0f, pct);
+    } else if (total >= 1024) {
+        n = snprintf(buf, len, "%u KB / %u KB (%d%%)", (unsigned)(sent / 1024), (unsigned)(total / 1024), pct);
+    } else {
+        n = snprintf(buf, len, "%u B / %u B (%d%%)", (unsigned)sent, (unsigned)total, pct);
+    }
+    if (rateMs >= 500 && n > 0 && (size_t)n < len) {
+        snprintf(buf + n, len - n, "  |  %.1f KB/s", rateBytes / 1024.0f / (rateMs / 1000.0f));
+    }
+}
+
+// Rate measurement: from the first progress report, so connecting and the
+// XModem handshake don't count
+static uint32_t transfer_start_ms = 0;
+static size_t transfer_start_bytes = 0;
+
 // "/a//b" -> "/a/b/", "" -> "/"
 static String normalizeFolder(String folder) {
     folder.trim();
@@ -1717,6 +1739,7 @@ void UITabFiles::showUploadDialog(const char* filename, const char* fullPath, si
 
 // Show upload progress dialog
 void UITabFiles::showUploadProgress(const char* filename) {
+    transfer_start_ms = 0;
     Serial.printf("[UITabFiles] showUploadProgress called for: %s\n", filename);
     
     if (upload_progress_dialog) {
@@ -1810,26 +1833,17 @@ void UITabFiles::updateUploadProgress(size_t current, size_t total) {
         return;
     }
     
-    int percent = (current * 100) / total;
+    int percent = total > 0 ? (int)((current * 100) / total) : 0;
     lv_bar_set_value(upload_progress_bar, percent, LV_ANIM_OFF);
     
-    if (total >= 1048576) {
-        // Show in MB
-        int currentMB = current / 10485;  // current / 1024 / 1024 * 100 = current / 10485.76
-        int totalMB = total / 10485;
-        lv_label_set_text_fmt(upload_progress_label, "%d.%02d MB / %d.%02d MB (%d%%)",
-                             currentMB / 100, currentMB % 100, totalMB / 100, totalMB % 100, percent);
-    } else if (total >= 1024) {
-        // Show in KB
-        int currentKB = current / 1024;
-        int totalKB = total / 1024;
-        lv_label_set_text_fmt(upload_progress_label, "%d KB / %d KB (%d%%)",
-                             currentKB, totalKB, percent);
-    } else {
-        // Show in bytes for files smaller than 1 KB
-        lv_label_set_text_fmt(upload_progress_label, "%d bytes / %d bytes (%d%%)",
-                             current, total, percent);
+    if (current == 0 || transfer_start_ms == 0) {
+        transfer_start_ms = millis();
+        transfer_start_bytes = current;
     }
+    char prog_text[96];
+    formatTransferProgress(prog_text, sizeof(prog_text), current, total,
+                           current - transfer_start_bytes, millis() - transfer_start_ms);
+    lv_label_set_text(upload_progress_label, prog_text);
     
     // Force screen refresh to show updated progress
     lv_refr_now(NULL);
@@ -1994,6 +2008,7 @@ void UITabFiles::navigateToUploadDirectory() {
 // ============================================================================
 
 void UITabFiles::showXModemProgress(const char* filename) {
+    transfer_start_ms = 0;
     if (xmodem_progress_dialog) {
         lv_obj_delete(xmodem_progress_dialog);
         xmodem_progress_dialog = nullptr;
@@ -2091,7 +2106,17 @@ void UITabFiles::closeXModemProgress(bool success, const char* error) {
     lv_obj_t *status_lbl = lv_obj_get_child(content, 4);
     if (status_lbl) {
         if (success) {
-            lv_label_set_text(status_lbl, "File transferred successfully");
+            const XModemTransferState& st = FluidNCClient::getXModemState();
+            uint32_t ms = transfer_start_ms ? millis() - transfer_start_ms : 0;
+            if (ms >= 500 && st.totalBytes > transfer_start_bytes) {
+                char done_text[96];
+                snprintf(done_text, sizeof(done_text), "Transferred %u KB in %.1f s (%.1f KB/s)",
+                         (unsigned)(st.totalBytes / 1024), ms / 1000.0f,
+                         (st.totalBytes - transfer_start_bytes) / 1024.0f / (ms / 1000.0f));
+                lv_label_set_text(status_lbl, done_text);
+            } else {
+                lv_label_set_text(status_lbl, "File transferred successfully");
+            }
             lv_obj_set_style_text_color(status_lbl, UITheme::UI_SUCCESS, 0);
         } else {
             lv_label_set_text_fmt(status_lbl, "Error: %s", error ? error : "unknown");
@@ -2167,19 +2192,14 @@ void UITabFiles::checkXModemProgress() {
             int pct = (int)((state.bytesSent * 100) / state.totalBytes);
             lv_bar_set_value(xmodem_progress_bar, pct, LV_ANIM_OFF);
         }
-        if (xmodem_progress_label && state.totalBytes > 0) {
-            size_t sent  = state.bytesSent;
-            size_t total = state.totalBytes;
-            int pct = (int)((sent * 100) / total);
-            char prog_text[64];
-            if (total >= 1048576) {
-                // lv_label_set_text_fmt does not support %f on ESP32; use snprintf first
-                snprintf(prog_text, sizeof(prog_text), "%.2f MB / %.2f MB (%d%%)",
-                    sent  / 1048576.0f, total / 1048576.0f, pct);
-            } else {
-                snprintf(prog_text, sizeof(prog_text), "%u KB / %u KB (%d%%)",
-                    (unsigned)(sent / 1024), (unsigned)(total / 1024), pct);
+        if (xmodem_progress_label && state.totalBytes > 0 && state.bytesSent > 0) {
+            if (transfer_start_ms == 0) {
+                transfer_start_ms = millis();
+                transfer_start_bytes = state.bytesSent;
             }
+            char prog_text[96];
+            formatTransferProgress(prog_text, sizeof(prog_text), state.bytesSent, state.totalBytes,
+                                   state.bytesSent - transfer_start_bytes, millis() - transfer_start_ms);
             lv_label_set_text(xmodem_progress_label, prog_text);
         }
         return;

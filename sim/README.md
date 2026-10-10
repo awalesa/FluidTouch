@@ -164,6 +164,17 @@ sim\build\espnow_link_test.exe           # reconnect with the saved pairing
 `--hold --seconds 40` keeps it running, so you can restart the fake server
 (optionally on another `--espnow-channel`) and check that it reconnects.
 
+### XModem upload test
+
+`xmodem_sender_test` runs the wired (UART / USB CDC) upload sender against an
+in-process receiver that behaves like FluidNC's `$Xmodem/Receive`. It checks
+1 KB and 128-byte blocks, the fallback to 128-byte blocks, checksum mode and a
+cancelled transfer, and exits 0 when every case passes:
+
+```powershell
+sim\build\xmodem_sender_test.exe
+```
+
 ### Scripted input and automated screenshots
 
 `--script` plays back touch and keyboard input. It's useful for regenerating

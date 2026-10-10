@@ -164,12 +164,24 @@ target_compile_options(espnow_link_test PRIVATE -funsigned-char -Wall -Wno-unuse
     "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${FT_CXX_FORCE_INCLUDE}>")
 target_link_libraries(espnow_link_test PRIVATE mbedcrypto)
 
+# XModem sender test against an in-process FluidNC-like receiver (see sim/test/xmodem_sender_test.cpp)
+add_executable(xmodem_sender_test
+    "${SIM_DIR}/test/xmodem_sender_test.cpp"
+    "${SIM_DIR}/src/arduino_core.cpp"
+    "${SIM_DIR}/src/sd_fs.cpp"
+    "${FT_ROOT}/src/network/xmodem_sender.cpp")
+target_include_directories(xmodem_sender_test PRIVATE ${FT_INCLUDE_DIRS})
+target_compile_definitions(xmodem_sender_test PRIVATE ${FT_DEFINES})
+target_compile_options(xmodem_sender_test PRIVATE -funsigned-char -Wall -Wno-unused-function
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${FT_CXX_FORCE_INCLUDE}>")
+
 if(WIN32)
     target_link_libraries(fluidtouch_sim PRIVATE ws2_32 iphlpapi)
     target_link_libraries(espnow_link_test PRIVATE ws2_32)
     # Static libgcc/libstdc++ so the exe only needs SDL2.dll next to it
     target_link_options(fluidtouch_sim PRIVATE -static-libgcc -static-libstdc++)
     target_link_options(espnow_link_test PRIVATE -static-libgcc -static-libstdc++)
+    target_link_options(xmodem_sender_test PRIVATE -static-libgcc -static-libstdc++)
     # Copy runtime DLLs next to the exe so it runs outside the MSYS2 shell
     # (and doesn't pick up an incompatible libwinpthread from e.g. Git's PATH)
     get_filename_component(MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
