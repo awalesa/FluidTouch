@@ -129,6 +129,7 @@ uart_channel1:
 - FluidNC **v4.1.1 or later** is recommended. With `report_interval_ms` set, it repeats its startup message until the display answers, so FluidTouch re-syncs when FluidNC restarts or both power up together.
 - Files on the display's SD card can be uploaded to FluidNC's SD card or flash over XModem. The destination folder must already exist; FluidNC can't create folders over this connection, so create the default `/fluidtouch/uploads/` folder once from FluidNC's WebUI.
 - Turning on **Load this machine at startup** is recommended, so the display connects as soon as it's powered.
+- If FluidNC stops answering (cable unplugged, FluidNC restarted), FluidTouch shows OFFLINE within about 35 seconds and reconnects by itself when FluidNC answers again. To reconnect at once, tap the machine name in the status bar and choose **Reconnect**.
 
 ### USB CDC
 
@@ -157,6 +158,7 @@ uart_channel3:
 - `report_interval_ms` can be `0`: FluidTouch turns on status reports itself. A non-zero value also works, and makes FluidNC repeat its startup message until the display answers, which helps FluidTouch re-sync after FluidNC restarts.
 - Files on the display's SD card can be uploaded to FluidNC's SD card or flash over XModem. The destination folder must already exist; FluidNC can't create folders over this connection, so create the default `/fluidtouch/uploads/` folder once from FluidNC's WebUI.
 - Turning on **Load this machine at startup** is recommended, so the display connects as soon as it's powered.
+- If FluidNC stops answering (cable unplugged, FluidNC restarted), FluidTouch shows OFFLINE within about 35 seconds and reconnects by itself when FluidNC answers again. To reconnect at once, tap the machine name in the status bar and choose **Reconnect**.
 
 ---
 

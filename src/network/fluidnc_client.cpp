@@ -47,6 +47,19 @@ ConnectionType FluidNCClient::activeSerialMode = CONN_WIFI;  // CONN_WIFI = "no 
 char FluidNCClient::uartRxBuffer[512] = {};
 uint16_t FluidNCClient::uartRxPos = 0;
 uint32_t FluidNCClient::uartBytesReceived = 0;
+
+// Wired (UART / USB CDC) link check. A serial link has no disconnect event, and
+// FluidNC's auto-report only sends on change, so an idle machine can be silent.
+// After LINK_IDLE_MS without any received byte, send a '?' (realtime: FluidNC
+// answers at once in any state, with no "ok"); no answer within
+// LINK_PROBE_TIMEOUT_MS means the link is gone (cable unplugged, FluidNC
+// restarted or crashed). While lost, keep probing; any reply restores it.
+static const uint32_t LINK_IDLE_MS = 30000;
+static const uint32_t LINK_PROBE_TIMEOUT_MS = 5000;
+static uint32_t serialLastRxMs = 0;
+static uint32_t serialProbeSentMs = 0;  // 0: no probe outstanding
+static bool serialLinkLost = false;
+
 XModemTransferState FluidNCClient::xmodemTransferState = {};
 bool FluidNCClient::isXModemTransfer = false;
 TaskHandle_t FluidNCClient::xmodemTaskHandle = nullptr;
@@ -119,6 +132,9 @@ bool FluidNCClient::connect(const MachineConfig &config) {
         autoReportingAttempted = false;
         everConnectedSuccessfully = false;
         uartBytesReceived = 0;
+        serialLastRxMs = millis();
+        serialProbeSentMs = 0;
+        serialLinkLost = false;
         activeStream = &fluidncUart;
 
         // FluidNC's USB host typically needs ~500-1500 ms to enumerate the CH340
@@ -507,12 +523,19 @@ void FluidNCClient::loop() {
 
     if (activeStream != nullptr) {
         // While an XModem transfer task is running, skip normal line parsing
-        if (isXModemTransfer) return;
+        // (and the link check: FluidNC only speaks XModem meanwhile)
+        if (isXModemTransfer) {
+            serialLastRxMs = millis();
+            serialProbeSentMs = 0;
+            return;
+        }
 
         // Drain serial receive buffer, process complete lines
+        bool received = false;
         while (activeStream->available()) {
             char c = (char)activeStream->read();
             uartBytesReceived++;
+            received = true;
             if (c == '\n') {
                 uartRxBuffer[uartRxPos] = '\0';
                 if (uartRxPos > 0) {
@@ -523,6 +546,36 @@ void FluidNCClient::loop() {
                 if (uartRxPos < sizeof(uartRxBuffer) - 1) {
                     uartRxBuffer[uartRxPos++] = c;
                 }
+            }
+        }
+
+        // Link check (see LINK_IDLE_MS)
+        uint32_t nowMs = millis();
+        if (received) {
+            serialLastRxMs = nowMs;
+            serialProbeSentMs = 0;
+            if (serialLinkLost) {
+                // FluidNC is back; it may have restarted and forgotten the report
+                // interval, so set the connection up again. is_connected returns
+                // with the next status report.
+                LOG_PRINTLN("[FluidNC] Wired link restored");
+                serialLinkLost = false;
+                sendStartupCommands();
+            }
+        } else if (currentStatus.is_connected || serialLinkLost) {
+            if (serialProbeSentMs == 0 && nowMs - serialLastRxMs >= LINK_IDLE_MS) {
+                activeStream->print("?");
+                serialProbeSentMs = nowMs;
+            } else if (serialProbeSentMs != 0 && nowMs - serialProbeSentMs >= LINK_PROBE_TIMEOUT_MS) {
+                if (!serialLinkLost) {
+                    LOG_PRINTLN("[FluidNC] No answer from FluidNC - wired link lost");
+                    serialLinkLost = true;
+                    currentStatus.is_connected = false;
+                    currentStatus.state = STATE_DISCONNECTED;
+                }
+                // Probe again after another idle period
+                serialLastRxMs = nowMs;
+                serialProbeSentMs = 0;
             }
         }
 
