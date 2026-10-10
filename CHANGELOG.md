@@ -5,7 +5,7 @@ All notable changes to FluidTouch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - TBD
+## [1.1.0] - 2026-10-10
 
 ### Added
 
@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Machine cards show the paired FluidNC hostname, or "Not paired"
   - File upload isn't available over ESP-NOW
 - **Wired UART Connection** (Advance only) - Connect to FluidNC through the display's UART0 header (TX=43, RX=44), which also powers the display
-  - Unplug the display's USB-C while wired; the debug console is off in this mode
+  - Unplug the display's USB-C while wired
   - The baud rate must match FluidNC's `uartN: baud:` setting
   - Upload files from the display's SD card to FluidNC's SD card or flash over XModem
   - FluidNC v4.1.1 or later is recommended so FluidTouch re-syncs when FluidNC restarts
@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Upload progress shows the transfer rate (KB/s), and **Cancel** stops an upload (previously the device had to be reset)
   - WiFi uploads run in the background, so the interface and the connection to FluidNC keep running during an upload
   - The display doesn't dim, turn off or go into deep sleep during an upload
+- **Wired Link Monitoring** - If FluidNC stops answering on a UART or USB CDC connection (for example after a restart or crash), the machine shows OFFLINE within about 35 seconds and reconnects automatically when FluidNC answers again
+- **Reconnect** - The System Options popup (tap the machine name in the status bar) has a Reconnect button to reconnect to the current machine without restarting
 - **Load This Machine at Startup** - Option in the machine editor that skips the machine list and connects straight to this machine (on by default for new wired machines)
 - **Axis Configuration** - Turn the X, Y and Z axes on or off per machine (Settings → General), alongside the existing A axis switch
   - Status tab hides the rows of disabled axes
@@ -43,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Machine Editor** - Shows only the fields the selected connection type uses; machine cards show the baud rate for wired connections
 - **Startup Machine** - With the machine list turned off, FluidTouch now loads the last machine used instead of the first configured one
 - **G-code Parser State on Connect** - FluidTouch requests `$G` as soon as it connects, so the work coordinate system, units, tool, feed and spindle are correct right away when connecting mid-session (thanks @junchao98, #60)
+- **Debug Console** - The serial debug console stays off if any saved machine uses UART or USB CDC, since those share its UART, and Serial Monitor input is no longer forwarded to FluidNC
 - **Unlock Button Color** - Unlock buttons are now dark cyan, so they no longer look like the X axis color
 - **Official ESP32 Platform** - Moved to the official pioarduino platform (Arduino 3.3.12, ESP-IDF 5.5.5)
 - **LovyanGFX 1.2.29** - Updated display driver

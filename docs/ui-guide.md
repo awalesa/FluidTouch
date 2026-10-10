@@ -10,6 +10,7 @@
   - [Status Bar](#status-bar)
   - [Tab Navigation](#tab-navigation)
 - [Status Tab](#status-tab)
+- [Main Tab (X-only machines)](#main-tab-x-only-machines)
 - [Control Tab](#control-tab)
   - [Actions](#actions)
   - [Jog](#jog)
@@ -151,6 +152,8 @@ Real-time machine status display with four columns:
 - **Limit X / Y / Z (and A)** indicators — light up per axis when a limit switch is triggered
 - Indicators remain visible for at least 500ms after deactivation so brief activations are easy to see
 
+Rows for axes turned off in **Settings → General → Axis Configuration** are hidden.
+
 ### SD Card File Progress
 (while running a job)
 
@@ -189,6 +192,25 @@ If attempting to probe or zero while a locked WCS is active, a warning popup app
 ---
 
 
+
+## Main Tab (X-only machines)
+
+![Main Tab](./images/main-tab.png)
+
+For machines with only an X axis, such as a miter saw stop or table saw fence, turning off Y and Z in **Settings → General → Axis Configuration** replaces the Status tab with a single **Main** tab that has everything needed for everyday use:
+
+**Left side:**
+- **Work Position:** the X work position; tap it to enter a position to go to
+- **X- / X+** jog buttons on either side of it, using the step sizes and feed rate from **Settings → Jog**
+- **LIMIT** indicator, lit while the X limit switch is triggered
+- **Message** box with FluidNC messages
+
+**Right side - Saved Positions:**
+- **Save** adds the current position (up to 8 per machine, kept in order)
+- Tap a saved position to go there; the one matching the current position is outlined
+- Long-press a saved position to delete it
+
+**Bottom:** STOP, Home X, Zero X and Unlock buttons.
 
 ## Control Tab
 
@@ -474,9 +496,10 @@ The Settings tab contains six sub-tabs for configuration:
 **Rotate 180 degrees**
 - Whether or not to rotate the screen 180 degrees.
 
-**Enable A-Axis:**
-- When enabled, a 4th A-axis is shown in the status bar, Status tab, Jog tab, Joystick tab, and Actions tab.
-- Setting is **per-machine** — the toggle applies to the currently selected machine, allowing mixed 3-axis and 4-axis configurations.
+**Axis Configuration:**
+- Switches for the **X, Y, Z** and **A** axes. X, Y and Z are on by default; turn off any your machine doesn't have. Turn on A for a rotary 4th axis, which then appears in the status bar, Status tab, Jog tab, Joystick tab, and Actions tab.
+- Disabled axes are hidden; turning off both Y and Z gives X-only machines the [Main tab](#main-tab-x-only-machines).
+- Settings are **per-machine** — the switches apply to the currently selected machine, allowing mixed configurations.
 - Requires a restart to take effect after changing.
 
 ### Backup

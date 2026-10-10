@@ -4,7 +4,7 @@
 
 FluidTouch provides an intuitive 800×480 touchscreen interface for controlling CNC machines running FluidNC firmware. Built on the Elecrow CrowPanel 7" ESP32-S3 HMI display with hardware-accelerated graphics and a responsive LVGL-based UI.
 
-![Version](https://img.shields.io/badge/version-1.0.5-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![Platform](https://img.shields.io/badge/platform-ESP32--S3-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
@@ -21,7 +21,9 @@ FluidTouch provides an intuitive 800×480 touchscreen interface for controlling 
 - **Settings Backup & Restore** - Export settings to JSON, auto-import on fresh install, Clear All Settings option
 - **Power Management** - Configurable display dimming, sleep, and deep sleep modes for battery operation
 - **Terminal** - Execute custom commands and view FluidNC messages
-- **WiFi Connectivity** - WebSocket connection to FluidNC with automatic status reporting
+- **Flexible Connectivity** - WiFi (WebSocket), ESP-NOW (no network needed), or wired UART / USB CDC, with automatic status reporting
+- **Reduced-Axis Machines** - Turn off unused axes per machine; X-only machines get a single Main tab with saved positions
+- **3D Printed Case and Stand** - Print-ready files for an Advance 7" case with room for a large battery, plus a table stand
 
 ---
 
