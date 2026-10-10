@@ -231,7 +231,7 @@ bool SettingsManager::importSettings(const char* filepath) {
             strncpy(machine_configs[machine_index].ssid, machine["ssid"] | "", sizeof(machine_configs[machine_index].ssid) - 1);
             strncpy(machine_configs[machine_index].password, machine["password"] | "", sizeof(machine_configs[machine_index].password) - 1);
             strncpy(machine_configs[machine_index].fluidnc_url, machine["fluidnc_url"] | "", sizeof(machine_configs[machine_index].fluidnc_url) - 1);
-            machine_configs[machine_index].websocket_port = machine["websocket_port"] | 81;
+            machine_configs[machine_index].websocket_port = machine["websocket_port"] | 80;
             machine_configs[machine_index].uart_baud_rate = machine["uart_baud_rate"] | 115200;
             
             // Jog settings

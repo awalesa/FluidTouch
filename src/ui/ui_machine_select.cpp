@@ -652,7 +652,7 @@ void UIMachineSelect::onConfigSave(lv_event_t *e) {
     strncpy(config.password, password, sizeof(config.password) - 1);
     strncpy(config.fluidnc_url, url, sizeof(config.fluidnc_url) - 1);
     config.websocket_port = atoi(port_str);
-    if (config.websocket_port == 0) config.websocket_port = 81;
+    if (config.websocket_port == 0) config.websocket_port = 80;
     // Baud rate from text field (only used for wired connections)
     if (ta_baud_rate) {
         uint32_t baud = (uint32_t)atol(lv_textarea_get_text(ta_baud_rate));
@@ -1083,7 +1083,7 @@ void UIMachineSelect::showConfigDialog(int index) {
         snprintf(port_str, sizeof(port_str), "%d", machines[index].websocket_port);
         lv_textarea_set_text(ta_port, port_str);
     } else {
-        lv_textarea_set_text(ta_port, "81");
+        lv_textarea_set_text(ta_port, "80");
     }
     lv_obj_add_event_cb(ta_port, onTextareaFocused, LV_EVENT_FOCUSED, nullptr);
     

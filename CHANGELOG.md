@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Machine Editor** - Shows only the fields the selected connection type uses; machine cards show the baud rate for wired connections
+- **Default WiFi Port** - New WiFi machines default to port 80, which FluidNC v4.0+ uses (was 81, for WebUI v2 on FluidNC v3.x)
 - **Startup Machine** - With the machine list turned off, FluidTouch now loads the last machine used instead of the first configured one
 - **G-code Parser State on Connect** - FluidTouch requests `$G` as soon as it connects, so the work coordinate system, units, tool, feed and spindle are correct right away when connecting mid-session (thanks @junchao98, #60)
 - **Debug Console** - The serial debug console stays off if any saved machine uses UART or USB CDC, since those share its UART, and Serial Monitor input is no longer forwarded to FluidNC

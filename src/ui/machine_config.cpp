@@ -33,7 +33,7 @@ void MachineConfigManager::loadMachines(MachineConfig machines[MAX_MACHINES]) {
             prefs.getString((prefix + "ssid").c_str(), machines[i].ssid, sizeof(machines[i].ssid));
             prefs.getString((prefix + "pwd").c_str(), machines[i].password, sizeof(machines[i].password));
             prefs.getString((prefix + "url").c_str(), machines[i].fluidnc_url, sizeof(machines[i].fluidnc_url));
-            machines[i].websocket_port = prefs.getUShort((prefix + "port").c_str(), 81);
+            machines[i].websocket_port = prefs.getUShort((prefix + "port").c_str(), 80);
             machines[i].uart_baud_rate = prefs.getUInt((prefix + "baud").c_str(), 115200);
             String espnowKey = prefix + "enow";
             if (prefs.getBytesLength(espnowKey.c_str()) == sizeof(EspNowPairing)) {

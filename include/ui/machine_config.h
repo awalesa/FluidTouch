@@ -39,7 +39,7 @@ struct MachineConfig {
     char ssid[33];           // WiFi SSID (max 32 chars + null)
     char password[64];       // WiFi password (max 63 chars + null)
     char fluidnc_url[128];   // FluidNC URL (e.g., "192.168.1.100" or "fluidnc.local")
-    uint16_t websocket_port; // WebSocket port (default 81)
+    uint16_t websocket_port; // WebSocket port (default 80)
     uint32_t uart_baud_rate; // CONN_UART: must match FluidNC's uartN baud. CONN_USB_CDC: must match
                              // FluidNC's `usb_host: baud:`, which sets the Advance's CH340 bridge speed
     EspNowPairing espnow_pairing;  // CONN_ESPNOW: FluidNC's MAC, key and channel (all zero = not paired)
@@ -72,7 +72,7 @@ struct MachineConfig {
     bool axis_a_enabled;     // Enable 4th axis (rotary) support
     
     // Constructor with defaults
-    MachineConfig() : connection_type(CONN_WIFI), websocket_port(81), uart_baud_rate(115200), is_configured(false),
+    MachineConfig() : connection_type(CONN_WIFI), websocket_port(80), uart_baud_rate(115200), is_configured(false),
                       jog_xy_step(10.0f), jog_z_step(1.0f), jog_a_step(1.0f),
                       jog_xy_feed(3000), jog_z_feed(1000), jog_a_feed(1000),
                       jog_max_xy_feed(3000), jog_max_z_feed(1000), jog_max_a_feed(1000),

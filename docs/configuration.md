@@ -78,7 +78,7 @@ FluidTouch joins your WiFi network and connects to FluidNC's WebSocket.
    - IP address format: `192.168.1.100`
    - Hostname format: `fluidnc.local` (mDNS)
 4. **Port:** WebSocket port number
-   - Default: `81`
+   - Default: `80`
    - Port 80 is used by FluidNC v4.0+
    - Port 81 is used by WebUI v2 (FluidNC v3.x)
    - Port 82 is used by WebUI v3 (FluidNC v3.x) - only allows one connection at a time but will switch cleanly between connections
