@@ -323,6 +323,8 @@ Serial.printf("Free heap: %d, Free PSRAM: %d\n",
     ESP.getFreeHeap(), ESP.getFreePsram());
 ```
 
+**Wired machines turn the console off:** The debug console is UART0, which is also the wired FluidNC link (the Advance's UART0 header and the USB-C jack used by USB CDC). If any saved machine uses UART or USB CDC, the console stays off from boot so nothing is printed into FluidNC. To debug over the serial monitor, delete or change those machines and restart.
+
 ### Screenshot Server
 
 Access live display at `http://[ESP32-IP]`

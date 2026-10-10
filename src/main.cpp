@@ -30,26 +30,30 @@
 // Set true by FluidNCClient while a UART / USB CDC connection owns UART0.
 bool g_serialMuted = false;
 
-// True if the last machine used connects to FluidNC over UART0 (the UART0
-// header or USB CDC). The debug console is UART0 too, so anything it printed
-// would go straight into FluidNC, and bytes such as '!' (feed hold) or
-// 0x80-0xBF (overrides) are realtime commands to it.
-static bool lastMachineUsesUart0() {
+// True if any saved machine connects to FluidNC over UART0 (the UART0 header
+// or USB CDC). The debug console is UART0 too, so while FluidNC is wired up
+// anything it printed would go straight into FluidNC, and bytes such as '!'
+// (feed hold) or 0x80-0xBF (overrides) are realtime commands to it. Checking
+// every machine, not just the last one used, covers the machine list and a
+// WiFi machine being used while FluidNC is still plugged in.
+static bool anyMachineUsesUart0() {
     Preferences prefs;
     prefs.begin(PREFS_NAMESPACE, true);
-    int index = prefs.getInt("sel_machine", -1);
-    uint8_t type = CONN_WIFI;
-    if (index >= 0 && index < MAX_MACHINES) {
-        String key = "m" + String(index) + "_type";
-        type = prefs.getUChar(key.c_str(), CONN_WIFI);
+    bool uses = false;
+    for (int i = 0; i < MAX_MACHINES && !uses; i++) {
+        String prefix = "m" + String(i) + "_";
+        if (prefs.getBool((prefix + "cfg").c_str(), false)) {
+            uint8_t type = prefs.getUChar((prefix + "type").c_str(), CONN_WIFI);
+            uses = type == CONN_UART || type == CONN_USB_CDC;
+        }
     }
     prefs.end();
-    return type == CONN_UART || type == CONN_USB_CDC;
+    return uses;
 }
 
 void setup()
 {
-    if (lastMachineUsesUart0()) {
+    if (anyMachineUsesUart0()) {
         // Leave the debug console off: Serial.print() does nothing until
         // Serial.begin(), and FluidNCClient::connect() opens UART0 for FluidNC
         g_serialMuted = true;
@@ -169,28 +173,6 @@ void setup()
 
 void loop()
 {
-    // Forward any Serial input to FluidNC (for debugging via Serial Monitor)
-    // Skip in serial modes: the FluidNC link (UART0 header or USB CDC) is UART0,
-    // the same UART as `Serial`.
-    if (!FluidNCClient::isSerialMode()) {
-        static char serial_buf[128];
-        static uint8_t serial_buf_pos = 0;
-        while (Serial.available()) {
-            char c = Serial.read();
-            if (c == '\n' || c == '\r') {
-                if (serial_buf_pos > 0) {
-                    serial_buf[serial_buf_pos++] = '\n';
-                    serial_buf[serial_buf_pos] = '\0';
-                    Serial.printf("[Serial->FluidNC] %s", serial_buf);
-                    FluidNCClient::sendCommand(serial_buf);
-                    serial_buf_pos = 0;
-                }
-            } else if (serial_buf_pos < sizeof(serial_buf) - 2) {
-                serial_buf[serial_buf_pos++] = c;
-            }
-        }
-    }
-
     // Handle screenshot server web requests
     ScreenshotServer::handleClient();
     
