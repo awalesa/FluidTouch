@@ -380,6 +380,7 @@ void FluidNCClient::xmodemUploadTask(void* pvParams) {
         return;
     }
 
+    XModemSender::Stats stats;
     bool ok = XModemSender::sendFile(
         *xmodemStream,
         params->remotePath,
@@ -390,8 +391,11 @@ void FluidNCClient::xmodemUploadTask(void* pvParams) {
         },
         xmodemTransferState.error,
         sizeof(xmodemTransferState.error),
-        []() { return (bool)xmodemTransferState.cancelRequested; }
+        []() { return (bool)xmodemTransferState.cancelRequested; },
+        &stats
     );
+    xmodemTransferState.naks = stats.naks;
+    xmodemTransferState.timeouts = stats.timeouts;
 
     file.close();
 

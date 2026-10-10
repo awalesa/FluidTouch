@@ -16,6 +16,8 @@ struct XModemTransferState {
     volatile size_t bytesSent;       // Bytes successfully transferred
     volatile size_t totalBytes;      // Total file size in bytes
     volatile bool cancelRequested;   // Set by the UI; the sender cancels before its next block
+    volatile uint32_t naks;          // Blocks FluidNC rejected (written before completed=true)
+    volatile uint32_t timeouts;      // Blocks resent after no reply (e.g. lost ACKs)
     char filename[128];              // Display filename (written before active=true)
     char error[128];                 // Error message (written before completed=true)
 };

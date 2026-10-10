@@ -115,7 +115,11 @@ bool XModemSender::sendFile(Stream& serial,
                              ProgressCallback onProgress,
                              char* error,
                              size_t errorLen,
-                             CancelCheck shouldCancel) {
+                             CancelCheck shouldCancel,
+                             Stats* stats) {
+    Stats localStats;
+    if (!stats) stats = &localStats;
+    *stats = Stats();
     auto fail = [&](const char* msg) {
         LOG_PRINTF("[XModem] ERROR: %s\n", msg);
         if (error && errorLen > 0) {
@@ -233,11 +237,15 @@ bool XModemSender::sendFile(Stream& serial,
             if (response == XMODEM_ACK) {
                 blockAcked = true;
             } else if (response == XMODEM_CAN) {
-                return fail("FluidNC cancelled the transfer (is the destination full?)");
+                // FluidNC cancels if it can't write a block, or after receiving
+                // a block it already accepted three times (its ACKs were lost)
+                return fail("FluidNC cancelled the transfer (too many resent blocks, or the destination is full)");
             } else if (response < 0) {
                 LOG_PRINTLN("[XModem] Timeout waiting for ACK");
+                stats->timeouts++;
+            } else {
+                stats->naks++;  // NAK: retry
             }
-            // NAK: retry
         }
         if (fellBack) continue;
 

@@ -2052,7 +2052,7 @@ void UITabFiles::showXModemProgress(const char* filename) {
 
     // Dialog box
     lv_obj_t *content = lv_obj_create(xmodem_progress_dialog);
-    lv_obj_set_size(content, 600, 320);
+    lv_obj_set_size(content, 600, 350);
     lv_obj_center(content);
     lv_obj_set_style_bg_color(content, UITheme::BG_MEDIUM, 0);
     lv_obj_set_style_border_color(content, UITheme::ACCENT_PRIMARY, 0);
@@ -2147,24 +2147,38 @@ void UITabFiles::closeXModemProgress(bool success, const char* error) {
     // status label is child index 4 in content (title, lbl_file, lbl_dest, bar, status_label, cancel button)
     lv_obj_t *status_lbl = lv_obj_get_child(content, 4);
     if (status_lbl) {
+        // Blocks FluidNC rejected or that got no reply: a sign of a poor link
+        const XModemTransferState& st = FluidNCClient::getXModemState();
+        char problems[64] = "";
+        if (st.naks || st.timeouts) {
+            snprintf(problems, sizeof(problems), "%u rejected, %u timed out",
+                     (unsigned)st.naks, (unsigned)st.timeouts);
+        }
         if (success) {
-            const XModemTransferState& st = FluidNCClient::getXModemState();
             uint32_t ms = transfer_start_ms ? millis() - transfer_start_ms : 0;
+            char done_text[160];
             if (ms >= 500 && st.totalBytes > transfer_start_bytes) {
-                char done_text[96];
                 snprintf(done_text, sizeof(done_text), "Transferred %u KB in %.1f s (%.1f KB/s)",
                          (unsigned)(st.totalBytes / 1024), ms / 1000.0f,
                          (st.totalBytes - transfer_start_bytes) / 1024.0f / (ms / 1000.0f));
-                lv_label_set_text(status_lbl, done_text);
             } else {
-                lv_label_set_text(status_lbl, "File transferred successfully");
+                snprintf(done_text, sizeof(done_text), "File transferred successfully");
             }
+            if (problems[0]) {
+                size_t n = strlen(done_text);
+                snprintf(done_text + n, sizeof(done_text) - n, "\nBlocks resent: %s", problems);
+            }
+            lv_label_set_text(status_lbl, done_text);
             lv_obj_set_style_text_color(status_lbl, UITheme::UI_SUCCESS, 0);
         } else if (cancelled) {
             lv_label_set_text(status_lbl, "Upload cancelled");
             lv_obj_set_style_text_color(status_lbl, UITheme::UI_WARNING, 0);
         } else {
-            lv_label_set_text_fmt(status_lbl, "Error: %s", error ? error : "unknown");
+            if (problems[0]) {
+                lv_label_set_text_fmt(status_lbl, "Error: %s\nBlocks resent: %s", error ? error : "unknown", problems);
+            } else {
+                lv_label_set_text_fmt(status_lbl, "Error: %s", error ? error : "unknown");
+            }
             lv_obj_set_style_text_color(status_lbl, UITheme::STATE_ALARM, 0);
         }
     }

@@ -31,6 +31,7 @@ struct ReceiverOptions {
     bool accept1K = true;       // false: NAK every 1 KB block, like a receiver without XModem-1K
     bool checksumMode = false;  // true: ask for checksum packets (NAK handshake)
     bool cancelOnOpen = false;  // true: send CAN at once, like a destination that can't be opened
+    int dropAckAfterBlock = -1; // Accept this block (1-based) but lose its ACK, like a dropped USB write
 };
 
 class FakeReceiver : public Stream {
@@ -41,6 +42,7 @@ public:
     int blocks1K = 0, blocks128 = 0, rejected = 0;
     bool gotEot = false;
     bool cancelled = false;   // Two CANs in a row: stopped, like FluidNC
+    int duplicates = 0;       // Resends of an already accepted block
 
     size_t write(uint8_t c) override { process(c); return 1; }
     size_t write(const uint8_t *buf, size_t n) override {
@@ -70,6 +72,7 @@ private:
     size_t want_ = 0;
     uint8_t expectSeq_ = 1;
     int cans_ = 0;
+    bool ackDropped_ = false;
 
     void handshake() {
         if (receiving_ && !started_ && millis() >= nextHandshake_) {
@@ -132,6 +135,11 @@ private:
             return;
         }
         const uint8_t *data = &packet_[3];
+        if (packet_[1] == (uint8_t)(expectSeq_ - 1) && packet_[2] == (uint8_t)(255 - packet_[1])) {
+            duplicates++;  // A resend of the block just accepted: ACK it again, like FluidNC
+            rx_.push_back(0x06);
+            return;
+        }
         bool ok = packet_[1] == expectSeq_ && packet_[2] == (uint8_t)(255 - packet_[1]);
         if (opt_.checksumMode) {
             uint8_t sum = 0;
@@ -153,6 +161,10 @@ private:
         file.insert(file.end(), data, data + size);
         (size == 1024 ? blocks1K : blocks128)++;
         expectSeq_++;
+        if (blocks1K + blocks128 == opt_.dropAckAfterBlock && !ackDropped_) {
+            ackDropped_ = true;  // The sender times out and resends this block
+            return;
+        }
         rx_.push_back(0x06);
     }
 };
@@ -179,7 +191,8 @@ static void runCase(const char *name, size_t size, ReceiverOptions opt, bool exp
     if (cancelAfter >= 0) {
         cancel = [rxp, cancelAfter]() { return rxp->blocks1K + rxp->blocks128 >= cancelAfter; };
     }
-    bool ok = XModemSender::sendFile(rx, "/sd/test.bin", file, size, nullptr, error, sizeof(error), cancel);
+    XModemSender::Stats stats;
+    bool ok = XModemSender::sendFile(rx, "/sd/test.bin", file, size, nullptr, error, sizeof(error), cancel, &stats);
     file.close();
 
     bool pass = ok == expectOk;
@@ -187,13 +200,17 @@ static void runCase(const char *name, size_t size, ReceiverOptions opt, bool exp
         pass = rx.cancelled && strcmp(error, XModemSender::CANCELLED) == 0 &&
                rx.blocks1K + rx.blocks128 == cancelAfter;
     }
+    if (pass && ok && opt.dropAckAfterBlock > 0) {
+        pass = stats.timeouts == 1 && rx.duplicates == 1;
+    }
     if (pass && ok) {
         pass = rx.gotEot && rx.file == original &&
                (expect1K < 0 || rx.blocks1K == expect1K) &&
                (expect128 < 0 || rx.blocks128 == expect128);
     }
-    printf("%-34s %s  ok=%d 1K=%d 128=%d rejected=%d %ums%s%s\n", name, pass ? "PASS" : "FAIL", ok,
-           rx.blocks1K, rx.blocks128, rx.rejected, (unsigned)(millis() - start),
+    printf("%-34s %s  ok=%d 1K=%d 128=%d rejected=%d naks=%u timeouts=%u %ums%s%s\n", name, pass ? "PASS" : "FAIL", ok,
+           rx.blocks1K, rx.blocks128, rx.rejected, (unsigned)stats.naks, (unsigned)stats.timeouts,
+           (unsigned)(millis() - start),
            error[0] ? "  error: " : "", error);
     if (!pass) failures++;
 }
@@ -224,6 +241,10 @@ int main() {
     ReceiverOptions cancel;
     cancel.cancelOnOpen = true;
     runCase("can't open destination", 3000, cancel, false);
+
+    ReceiverOptions lostAck;
+    lostAck.dropAckAfterBlock = 2;
+    runCase("lost ACK: block resent (5 s wait)", 3000, lostAck, true, 3, 0);
 
     runCase("cancel while waiting for FluidNC", 30000, std1K, false, -1, -1, 0);
     runCase("cancel after 5 blocks", 30000, std1K, false, -1, -1, 5);

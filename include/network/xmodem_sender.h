@@ -15,6 +15,12 @@ public:
     using ProgressCallback = std::function<void(size_t bytesSent, size_t totalBytes)>;
     using CancelCheck = std::function<bool()>;
 
+    // Problems during a transfer, for diagnosing a poor link
+    struct Stats {
+        uint32_t naks = 0;      // Blocks FluidNC rejected (corrupted or incomplete)
+        uint32_t timeouts = 0;  // Blocks with no reply in time (e.g. a lost ACK); resent
+    };
+
     // Error text when the transfer was cancelled through shouldCancel
     static constexpr const char* CANCELLED = "Cancelled";
 
@@ -31,7 +37,8 @@ public:
                          ProgressCallback onProgress = nullptr,
                          char* error = nullptr,
                          size_t errorLen = 0,
-                         CancelCheck shouldCancel = nullptr);
+                         CancelCheck shouldCancel = nullptr,
+                         Stats* stats = nullptr);
 
 private:
     static uint16_t calcCrc16(const uint8_t* data, size_t len);
