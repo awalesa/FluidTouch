@@ -41,7 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Machine Editor** - Shows only the fields the selected connection type uses; machine cards show the baud rate for wired connections
 - **Startup Machine** - With the machine list turned off, FluidTouch now loads the last machine used instead of the first configured one
 - **G-code Parser State on Connect** - FluidTouch requests `$G` as soon as it connects, so the work coordinate system, units, tool, feed and spindle are correct right away when connecting mid-session (thanks @junchao98, #60)
-- **Faster Wired Uploads** - UART and USB CDC uploads send 1 KB XModem blocks instead of 128-byte blocks, so FluidNC confirms far fewer blocks (falls back to 128-byte blocks if FluidNC doesn't accept 1 KB blocks). A failed wired upload now explains why, and one FluidNC can't open fails at once instead of after 30 seconds
 - **Unlock Button Color** - Unlock buttons are now dark cyan, so they no longer look like the X axis color
 - **Official ESP32 Platform** - Moved to the official pioarduino platform (Arduino 3.3.12, ESP-IDF 5.5.5)
 - **LovyanGFX 1.2.29** - Updated display driver
