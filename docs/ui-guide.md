@@ -369,8 +369,7 @@ The destination and folder are remembered for the next upload until the display 
 - Percentage complete
 - Progress bar visual
 - Transfer rate (KB/s)
-- UART / USB CDC: **Cancel** stops the transfer; FluidNC discards the partial file
-- WiFi: reset the device to cancel the upload
+- **Cancel** stops the upload; FluidNC discards the partial file. The rest of the interface keeps running during an upload.
 - After a successful upload, **Open Folder** shows the destination folder in the file list; **Close** returns to the file list
 
 ### Delete Confirmation

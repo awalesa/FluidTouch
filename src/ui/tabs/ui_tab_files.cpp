@@ -1209,6 +1209,8 @@ static void formatTransferProgress(char *buf, size_t len, size_t sent, size_t to
 // Rate measurement: from the first progress report, so connecting and the
 // XModem handshake don't count
 static uint32_t transfer_start_ms = 0;
+// True once the HTTP upload's result is shown (checkUploadProgress stops polling)
+static bool upload_finalized = true;
 static size_t transfer_start_bytes = 0;
 
 // "/a//b" -> "/a/b/", "" -> "/"
@@ -1533,8 +1535,11 @@ void UITabFiles::startUpload() {
             closeXModemProgress(false, "Failed to start transfer task");
         }
     } else {
-        UploadManager::uploadFile(upload_local_path, upload_display_name, upload_to_flash,
-                                  upload_folder.c_str(), updateUploadProgress, closeUploadProgress);
+        // Runs in a background task; checkUploadProgress follows it
+        if (!UploadManager::startUpload(upload_local_path, upload_display_name, upload_to_flash,
+                                        upload_folder.c_str())) {
+            closeUploadProgress(false, "Couldn't start the upload");
+        }
     }
 }
 
@@ -1812,25 +1817,47 @@ void UITabFiles::showUploadProgress(const char* filename) {
     
     Serial.printf("[UITabFiles] Progress label created at %p\n", upload_progress_label);
     
-    // Info text at bottom (will be replaced with Close button on success)
-    lv_obj_t *lbl_info = lv_label_create(content);
-    lv_obj_set_style_text_font(lbl_info, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_info, UITheme::TEXT_DISABLED, 0);
-    lv_obj_align(lbl_info, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_label_set_text(lbl_info, "Reset device to cancel upload");
-    
-    // Force immediate screen refresh to show dialog before upload blocks
-    Serial.println("[UITabFiles] Forcing screen refresh...");
-    lv_refr_now(NULL);
-    Serial.println("[UITabFiles] Screen refresh complete");
+    // Cancel button (the last child: closeUploadProgress replaces it)
+    lv_obj_t *btn_cancel = lv_btn_create(content);
+    lv_obj_set_size(btn_cancel, 180, 50);
+    lv_obj_align(btn_cancel, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(btn_cancel, UITheme::BG_BUTTON, 0);
+    lv_obj_add_event_cb(btn_cancel, [](lv_event_t *e) {
+        lv_obj_t *btn = (lv_obj_t*)lv_event_get_target(e);
+        // Before the upload starts (folder check) there's nothing to cancel yet
+        if (!UploadManager::isUploading()) return;
+        UploadManager::cancel();
+        lv_obj_add_state(btn, LV_STATE_DISABLED);
+        lv_obj_t *lbl = lv_obj_get_child(btn, 0);
+        if (lbl) lv_label_set_text(lbl, "Cancelling...");
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t *lbl_cancel = lv_label_create(btn_cancel);
+    lv_label_set_text(lbl_cancel, LV_SYMBOL_CLOSE " Cancel");
+    lv_obj_set_style_text_font(lbl_cancel, &lv_font_montserrat_18, 0);
+    lv_obj_center(lbl_cancel);
+    upload_finalized = false;
+}
+
+// Called from the main loop: follow the HTTP upload task and update the dialog
+void UITabFiles::checkUploadProgress() {
+    if (!upload_progress_dialog || upload_finalized) return;
+    const HttpUploadState &st = UploadManager::state();
+    if (st.active && st.totalBytes > 0) {
+        static size_t last_bytes = (size_t)-1;
+        if (st.bytesSent != last_bytes || transfer_start_ms == 0) {
+            last_bytes = st.bytesSent;
+            updateUploadProgress(st.bytesSent, st.totalBytes);
+        }
+    } else if (st.completed) {
+        upload_finalized = true;
+        if (st.success) updateUploadProgress(st.totalBytes, st.totalBytes);
+        closeUploadProgress(st.success, st.error[0] ? st.error : nullptr);
+    }
 }
 
 // Update upload progress callback
 void UITabFiles::updateUploadProgress(size_t current, size_t total) {
-    Serial.printf("[UITabFiles] updateUploadProgress called: %d / %d\n", current, total);
-    
     if (!upload_progress_bar || !upload_progress_label) {
-        Serial.println("[UITabFiles] WARNING: upload_progress_bar or upload_progress_label is null!");
         return;
     }
     
@@ -1845,9 +1872,6 @@ void UITabFiles::updateUploadProgress(size_t current, size_t total) {
     formatTransferProgress(prog_text, sizeof(prog_text), current, total,
                            current - transfer_start_bytes, millis() - transfer_start_ms);
     lv_label_set_text(upload_progress_label, prog_text);
-    
-    // Force screen refresh to show updated progress
-    lv_refr_now(NULL);
 }
 
 // Close upload progress dialog

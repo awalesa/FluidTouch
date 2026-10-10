@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Defaults to `/fluidtouch/uploads/`; the choice is remembered until restart
   - Uploads only go to existing folders, except the default folder, which WiFi uploads create if needed
   - **Open Folder** after a successful upload shows the destination in the file list
-  - Upload progress shows the transfer rate (KB/s)
+  - Upload progress shows the transfer rate (KB/s), and **Cancel** stops an upload (previously the device had to be reset)
+  - WiFi uploads run in the background, so the interface and the connection to FluidNC keep running during an upload
 - **Load This Machine at Startup** - Option in the machine editor that skips the machine list and connects straight to this machine (on by default for new wired machines)
 - **Axis Configuration** - Turn the X, Y and Z axes on or off per machine (Settings → General), alongside the existing A axis switch
   - Status tab hides the rows of disabled axes

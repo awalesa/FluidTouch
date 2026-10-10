@@ -7,7 +7,7 @@
 #include <esp_heap_caps.h>
 #include <lvgl.h>
 
-bool UploadManager::_uploading = false;
+HttpUploadState UploadManager::_state = {};
 
 bool UploadManager::ensureDirectoryExists(const String& machineIP, const char* endpoint, const String& dirPath) {
     Serial.printf("[UploadManager] Ensuring directory exists: %s%s\n", endpoint, dirPath.c_str());
@@ -99,71 +99,126 @@ bool UploadManager::init() {
     return true;
 }
 
+struct UploadTaskParams {
+    char localPath[256];
+    char filename[128];
+    char destDir[160];
+    bool toFlash;
+};
+
+bool UploadManager::startUpload(const char* localPath,
+                                const char* filename,
+                                bool toFlash,
+                                const char* destDir) {
+    if (_state.active) {
+        Serial.println("[UploadManager] Upload already in progress");
+        return false;
+    }
+    UploadTaskParams* params = (UploadTaskParams*)malloc(sizeof(UploadTaskParams));
+    if (!params) return false;
+    strncpy(params->localPath, localPath, sizeof(params->localPath) - 1);
+    params->localPath[sizeof(params->localPath) - 1] = '\0';
+    strncpy(params->filename, filename, sizeof(params->filename) - 1);
+    params->filename[sizeof(params->filename) - 1] = '\0';
+    strncpy(params->destDir, destDir ? destDir : "/", sizeof(params->destDir) - 1);
+    params->destDir[sizeof(params->destDir) - 1] = '\0';
+    params->toFlash = toFlash;
+
+    memset((void*)&_state, 0, sizeof(_state));
+    _state.active = true;
+
+    // Runs on core 0 like the XModem upload, so the UI and the FluidNC
+    // connection keep running and the Cancel button works
+    BaseType_t rc = xTaskCreatePinnedToCore(uploadTask, "http_upload", 8192, params, 5, nullptr, 0);
+    if (rc != pdPASS) {
+        Serial.println("[UploadManager] xTaskCreate failed");
+        free(params);
+        _state.active = false;
+        return false;
+    }
+    return true;
+}
+
+void UploadManager::uploadTask(void* pvParams) {
+    UploadTaskParams* params = (UploadTaskParams*)pvParams;
+    bool ok = uploadFile(params->localPath, params->filename, params->toFlash, params->destDir);
+    free(params);
+
+    if (ok) _state.error[0] = '\0';
+    _state.success = ok;
+    _state.completed = true;
+    _state.active = false;
+    Serial.printf("[UploadManager] Upload %s\n", ok ? "completed" : "failed");
+    vTaskDelete(nullptr);
+}
+
+const HttpUploadState& UploadManager::state() {
+    return _state;
+}
+
+void UploadManager::cancel() {
+    if (_state.active) {
+        _state.cancelRequested = true;
+    }
+}
+
+bool UploadManager::isUploading() {
+    return _state.active;
+}
+
+// Runs in the upload task. Reports progress through _state; on failure the
+// reason is in _state.error.
 bool UploadManager::uploadFile(const char* localPath,
                                const char* filename,
                                bool toFlash,
-                               const char* destDirArg,
-                               ProgressCallback onProgress,
-                               CompleteCallback onComplete) {
-    if (_uploading) {
-        Serial.println("[UploadManager] Upload already in progress");
-        if (onComplete) onComplete(false, "Upload already in progress");
+                               const char* destDirArg) {
+    auto fail = [](const char* msg) {
+        Serial.printf("[UploadManager] %s\n", msg);
+        strncpy(_state.error, msg, sizeof(_state.error) - 1);
+        _state.error[sizeof(_state.error) - 1] = '\0';
         return false;
-    }
-    
-    _uploading = true;
-    
+    };
+
     Serial.printf("[UploadManager] Starting upload of %s\n", localPath);
-    
+
     // Open local file
     File file = SD.open(localPath);
     if (!file) {
-        Serial.println("[UploadManager] Failed to open local file");
-        _uploading = false;
-        if (onComplete) onComplete(false, "Failed to open local file");
-        return false;
+        return fail("Failed to open local file");
     }
-    
+
     size_t fileSize = file.size();
+    _state.totalBytes = fileSize;
     Serial.printf("[UploadManager] File size: %d bytes\n", fileSize);
-    
+
     // Support files up to 10MB
     if (fileSize > 10485760) {  // 10MB limit
-        Serial.println("[UploadManager] File too large for upload");
         file.close();
-        _uploading = false;
-        if (onComplete) onComplete(false, "File too large (max 10MB)");
-        return false;
+        return fail("File too large (max 10MB)");
     }
-    
+
     // Allocate streaming buffer in PSRAM (16KB chunks)
     const size_t CHUNK_SIZE = 16384;
     uint8_t* buffer = (uint8_t*)heap_caps_malloc(CHUNK_SIZE, MALLOC_CAP_SPIRAM);
     if (!buffer) {
-        Serial.println("[UploadManager] Failed to allocate buffer");
         file.close();
-        _uploading = false;
-        if (onComplete) onComplete(false, "Out of memory");
-        return false;
+        return fail("Out of memory");
     }
-    
+
     // Get FluidNC IP (already resolved from hostname/mDNS during connect())
     String machineIP = FluidNCClient::getMachineIP();
     if (machineIP.isEmpty()) {
-        Serial.println("[UploadManager] FluidNC not connected");
         heap_caps_free(buffer);
         file.close();
-        _uploading = false;
-        if (onComplete) onComplete(false, "FluidNC not connected");
-        return false;
+        return fail("FluidNC not connected");
     }
-    
+
     // Build remote path - remove leading slash from filename if present
     String filenameStr = String(filename);
     if (filenameStr.startsWith("/")) {
         filenameStr = filenameStr.substring(1);
     }
-    
+
     // FluidNC expects path as directory only, filename goes in form field name
     const char* endpoint = toFlash ? "/files" : "/upload";
     String destDir = String(destDirArg && *destDirArg ? destDirArg : "/");
@@ -177,119 +232,123 @@ bool UploadManager::uploadFile(const char* localPath,
         Serial.println("[UploadManager] Warning: Could not verify directory creation");
         // Continue anyway - the upload might still work if directory exists
     }
-    
+
     // Get current timestamp
     time_t now = time(nullptr);
     struct tm timeinfo;
     localtime_r(&now, &timeinfo);
     char timestamp[32];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", &timeinfo);
-    
+
     String url = "http://" + machineIP + endpoint;
     Serial.printf("[UploadManager] Uploading to %s (path: %s)\n", url.c_str(), fullPath.c_str());
-    
+
     // Build multipart boundary
     String boundary = "----WebKitFormBoundary" + String(random(0xffff), HEX);
     String contentType = "multipart/form-data; boundary=" + boundary;
-    
+
     // Build multipart body parts
     // Part 1: path field (destination directory)
     String part1 = "--" + boundary + "\r\n";
     part1 += "Content-Disposition: form-data; name=\"path\"\r\n\r\n";
     part1 += destDir + "\r\n";
-    
+
     // Part 2: file size field
     String sizeFieldName = fullPath + "S";
     String part2 = "--" + boundary + "\r\n";
     part2 += "Content-Disposition: form-data; name=\"" + sizeFieldName + "\"\r\n\r\n";
     part2 += String(fileSize) + "\r\n";
-    
+
     // Part 3: timestamp field
     String timeFieldName = fullPath + "T";
     String part3 = "--" + boundary + "\r\n";
     part3 += "Content-Disposition: form-data; name=\"" + timeFieldName + "\"\r\n\r\n";
     part3 += String(timestamp) + "\r\n";
-    
+
     // Part 4: file data header
     String part4 = "--" + boundary + "\r\n";
     part4 += "Content-Disposition: form-data; name=\"myfiles\"; filename=\"" + fullPath + "\"\r\n";
     part4 += "Content-Type: application/octet-stream\r\n\r\n";
-    
+
     String footer = "\r\n--" + boundary + "--\r\n";
-    
+
     size_t totalSize = part1.length() + part2.length() + part3.length() + part4.length() + fileSize + footer.length();
     Serial.printf("[UploadManager] Total multipart size: %d bytes\n", totalSize);
-    
-    // Report initial progress
-    if (onProgress) {
-        onProgress(0, fileSize);
+
+    if (_state.cancelRequested) {
+        heap_caps_free(buffer);
+        file.close();
+        return fail(CANCELLED);
     }
-    
+
     // Create WiFi client and connect directly
     WiFiClient client;
     if (!client.connect(machineIP.c_str(), 80)) {
-        Serial.println("[UploadManager] Connection failed");
         heap_caps_free(buffer);
         file.close();
-        _uploading = false;
-        if (onComplete) onComplete(false, "Connection failed");
-        return false;
+        return fail("Connection failed");
     }
-    
+
     Serial.println("[UploadManager] Connected, sending request...");
-    
+
     // Send HTTP headers
     client.print(String("POST ") + endpoint + " HTTP/1.1\r\n");
     client.print("Host: " + machineIP + "\r\n");
     client.print("Content-Type: " + contentType + "\r\n");
     client.print("Content-Length: " + String(totalSize) + "\r\n");
     client.print("Connection: close\r\n\r\n");
-    
+
     // Send multipart parts
     client.print(part1);
     client.print(part2);
     client.print(part3);
     client.print(part4);
-    
+
     Serial.println("[UploadManager] Headers sent, streaming file...");
-    
+
     // Stream file in chunks
     size_t bytesUploaded = 0;
     size_t lastReportedPercent = 0;
     bool success = true;
-    
+    bool cancelled = false;
+
     while (file.available()) {
+        if (_state.cancelRequested) {
+            // Dropping the connection aborts the upload; FluidNC discards the partial file
+            cancelled = true;
+            success = false;
+            break;
+        }
         size_t bytesRead = file.read(buffer, CHUNK_SIZE);
         size_t bytesWritten = client.write(buffer, bytesRead);
-        
+
         if (bytesWritten != bytesRead) {
             Serial.println("[UploadManager] Write error");
             success = false;
             break;
         }
-        
+
         bytesUploaded += bytesWritten;
-        
-        // Report progress every 1% to provide smooth updates
+        _state.bytesSent = bytesUploaded;
+
         size_t currentPercent = (bytesUploaded * 100) / fileSize;
-        if (onProgress && (currentPercent > lastReportedPercent || bytesUploaded == fileSize)) {
-            onProgress(bytesUploaded, fileSize);
+        if (currentPercent >= lastReportedPercent + 10 || bytesUploaded == fileSize) {
             lastReportedPercent = currentPercent;
             Serial.printf("[UploadManager] Progress: %d%% (%d/%d bytes)\n", currentPercent, bytesUploaded, fileSize);
         }
-        
+
         // Small delay for network and watchdog
         delay(1);
     }
-    
+
     file.close();
-    
+
     // Send footer
     if (success) {
         client.print(footer);
         Serial.println("[UploadManager] All data sent, waiting for response...");
     }
-    
+
     // Get response
     int httpCode = -1;
     if (success) {
@@ -302,11 +361,11 @@ bool UploadManager::uploadFile(const char* localPath,
             }
             delay(10);
         }
-        
+
         if (success) {
             String response = client.readStringUntil('\n');
             Serial.printf("[UploadManager] Response: %s\n", response.c_str());
-            
+
             if (response.indexOf("200") >= 0) httpCode = 200;
             else if (response.indexOf("201") >= 0) httpCode = 201;
             else {
@@ -316,39 +375,17 @@ bool UploadManager::uploadFile(const char* localPath,
             }
         }
     }
-    
+
     client.stop();
-    
-    Serial.printf("[UploadManager] HTTP response code: %d\n", httpCode);
-    
-    if (success && (httpCode == 200 || httpCode == 201)) {
-        Serial.println("[UploadManager] Upload successful");
-    } else if (httpCode < 0) {
-        Serial.printf("[UploadManager] Upload failed - connection error (code %d)\n", httpCode);
-    } else {
-        Serial.printf("[UploadManager] Upload failed - server error (code %d)\n", httpCode);
-    }
-    
-    // Cleanup
     heap_caps_free(buffer);
-    _uploading = false;
-    
-    if (onComplete) {
-        if (success && (httpCode == 200 || httpCode == 201)) {
-            onComplete(true, "Upload successful");
-        } else if (httpCode < 0) {
-            onComplete(false, "Connection error");
-        } else {
-            onComplete(false, "Server error");
-        }
+
+    Serial.printf("[UploadManager] HTTP response code: %d\n", httpCode);
+
+    if (cancelled) {
+        return fail(CANCELLED);
     }
-    
-    Serial.printf("[UploadManager] Upload %s\n", success ? "completed" : "failed");
-    return success;
-}
-
-
-
-bool UploadManager::isUploading() {
-    return _uploading;
+    if (success && (httpCode == 200 || httpCode == 201)) {
+        return true;
+    }
+    return fail(httpCode < 0 ? "Connection error" : "Server error");
 }

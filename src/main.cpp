@@ -207,8 +207,9 @@ void loop()
     // Check for pending file list refresh (from Files tab delete callback)
     UITabFiles::checkPendingRefresh();
     
-    // Poll XModem transfer state and update progress dialog (wired mode)
+    // Poll upload state and update the progress dialogs (XModem when wired, HTTP over WiFi)
     UITabFiles::checkXModemProgress();
+    UITabFiles::checkUploadProgress();
     
     // Update UI from FluidNC status (every 250ms)
     static uint32_t lastUIUpdate = 0;

@@ -22,6 +22,8 @@ public:
     static void checkPendingRefresh();  // Check and execute pending refresh (called from main loop)
     // Poll XModem transfer state and update the progress dialog (called from main loop)
     static void checkXModemProgress();
+    // Poll the HTTP (WiFi) upload task and update its progress dialog (called from main loop)
+    static void checkUploadProgress();
     static StorageSource current_storage;
     
     // Cache for each storage source
