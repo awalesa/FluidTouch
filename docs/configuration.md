@@ -85,7 +85,7 @@ FluidTouch joins your WiFi network and connects to FluidNC's WebSocket.
 
 ### ESP-NOW
 
-A direct radio link between the display and FluidNC, so no WiFi network or router is needed. Requires FluidNC **v4.1.0 or later** with its WiFi radio on.
+A direct radio link between the display and FluidNC, so no WiFi network or router is needed. Requires FluidNC **v4.1.0 or later**. FluidNC's WiFi doesn't need to be set up: if it's off, FluidNC turns the radio on for ESP-NOW by itself.
 
 **Pairing:**
 1. Choose **ESP-NOW** as the connection type. The network fields are replaced by a pairing panel.
@@ -111,18 +111,18 @@ A wired serial connection through the Advance's **UART0 header** (TX=GPIO43, RX=
 - 5 V and GND from the controller to the header
 - **Unplug the display's USB-C cable** while connected over UART. The header shares UART0 with the display's USB-C serial chip, and FluidTouch turns off its debug console in this mode.
 
-**FluidNC configuration:** Add a UART for the display and a UART channel that uses it. Use whichever GPIOs are free on your controller:
+**FluidNC configuration:** Add a UART for the display and a UART channel that uses it. Use the UART pins of your controller's expansion port (see its documentation). This example is for the Doberman S3:
 
 ```yaml
-uart1:
-  txd_pin: gpio.17   # to the display's RX (GPIO44)
-  rxd_pin: gpio.16   # from the display's TX (GPIO43)
+uart2:
+  txd_pin: gpio.0    # to the display's RX (GPIO44)
+  rxd_pin: gpio.35   # from the display's TX (GPIO43)
   baud: 1000000
   mode: 8N1
 
-uart_channel1:
-  uart_num: 1
-  report_interval_ms: 250
+uart_channel2:
+  uart_num: 2
+  report_interval_ms: 75
 ```
 
 **Notes:**
