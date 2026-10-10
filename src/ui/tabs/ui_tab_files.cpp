@@ -3,6 +3,7 @@
 #include "ui/ui_tabs.h"
 #include "ui/upload_manager.h"
 #include "network/fluidnc_client.h"
+#include "network/xmodem_sender.h"
 #include "config.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -2072,11 +2073,24 @@ void UITabFiles::showXModemProgress(const char* filename) {
     lv_obj_set_style_text_color(xmodem_progress_label, UITheme::TEXT_LIGHT, 0);
     lv_obj_align(xmodem_progress_label, LV_ALIGN_TOP_LEFT, 0, 155);
 
-    lv_obj_t *lbl_note = lv_label_create(content);
-    lv_label_set_text(lbl_note, "Restart device to cancel transfer");
-    lv_obj_set_style_text_font(lbl_note, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_note, UITheme::TEXT_DISABLED, 0);
-    lv_obj_align(lbl_note, LV_ALIGN_BOTTOM_MID, 0, -10);
+    // Cancel button (the last child: closeXModemProgress replaces it)
+    lv_obj_t *btn_cancel = lv_btn_create(content);
+    lv_obj_set_size(btn_cancel, 180, 50);
+    lv_obj_align(btn_cancel, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(btn_cancel, UITheme::BG_BUTTON, 0);
+    lv_obj_add_event_cb(btn_cancel, [](lv_event_t *e) {
+        lv_obj_t *btn = (lv_obj_t*)lv_event_get_target(e);
+        // Before the transfer starts (folder check) there's nothing to cancel yet
+        if (!FluidNCClient::isXModemTransferActive()) return;
+        FluidNCClient::cancelXModemUpload();
+        lv_obj_add_state(btn, LV_STATE_DISABLED);
+        lv_obj_t *lbl = lv_obj_get_child(btn, 0);
+        if (lbl) lv_label_set_text(lbl, "Cancelling...");
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t *lbl_cancel = lv_label_create(btn_cancel);
+    lv_label_set_text(lbl_cancel, LV_SYMBOL_CLOSE " Cancel");
+    lv_obj_set_style_text_font(lbl_cancel, &lv_font_montserrat_18, 0);
+    lv_obj_center(lbl_cancel);
 
     lv_refr_now(NULL);
 }
@@ -2091,18 +2105,22 @@ void UITabFiles::closeXModemProgress(bool success, const char* error) {
     lv_obj_t *content = lv_obj_get_child(xmodem_progress_dialog, 0);
     if (!content) return;
 
+    bool cancelled = !success && error && strcmp(error, XModemSender::CANCELLED) == 0;
     lv_obj_t *title = lv_obj_get_child(content, 0);
     if (title) {
         if (success) {
             lv_label_set_text(title, LV_SYMBOL_OK " Transfer Complete");
             lv_obj_set_style_text_color(title, UITheme::UI_SUCCESS, 0);
+        } else if (cancelled) {
+            lv_label_set_text(title, LV_SYMBOL_CLOSE " Transfer Cancelled");
+            lv_obj_set_style_text_color(title, UITheme::UI_WARNING, 0);
         } else {
             lv_label_set_text(title, LV_SYMBOL_WARNING " Transfer Failed");
             lv_obj_set_style_text_color(title, UITheme::STATE_ALARM, 0);
         }
     }
 
-    // status label is child index 4 in content (title, lbl_file, lbl_dest, bar, status_label, note)
+    // status label is child index 4 in content (title, lbl_file, lbl_dest, bar, status_label, cancel button)
     lv_obj_t *status_lbl = lv_obj_get_child(content, 4);
     if (status_lbl) {
         if (success) {
@@ -2118,16 +2136,19 @@ void UITabFiles::closeXModemProgress(bool success, const char* error) {
                 lv_label_set_text(status_lbl, "File transferred successfully");
             }
             lv_obj_set_style_text_color(status_lbl, UITheme::UI_SUCCESS, 0);
+        } else if (cancelled) {
+            lv_label_set_text(status_lbl, "Upload cancelled");
+            lv_obj_set_style_text_color(status_lbl, UITheme::UI_WARNING, 0);
         } else {
             lv_label_set_text_fmt(status_lbl, "Error: %s", error ? error : "unknown");
             lv_obj_set_style_text_color(status_lbl, UITheme::STATE_ALARM, 0);
         }
     }
 
-    // Replace the "restart to cancel" note with a Close button
+    // Replace the Cancel button with Open Folder / Close
     uint32_t n = lv_obj_get_child_count(content);
     if (n > 0) {
-        lv_obj_delete(lv_obj_get_child(content, n - 1)); // remove note label
+        lv_obj_delete(lv_obj_get_child(content, n - 1)); // remove Cancel button
     }
     lv_obj_t *btn_row = lv_obj_create(content);
     lv_obj_set_size(btn_row, LV_PCT(100), 60);

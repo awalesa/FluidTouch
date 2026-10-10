@@ -13,18 +13,25 @@
 class XModemSender {
 public:
     using ProgressCallback = std::function<void(size_t bytesSent, size_t totalBytes)>;
+    using CancelCheck = std::function<bool()>;
+
+    // Error text when the transfer was cancelled through shouldCancel
+    static constexpr const char* CANCELLED = "Cancelled";
 
     // Sends the $Xmodem/Receive=<remotePath> command then transfers the open
     // file. The file must be opened for reading and positioned at byte 0.
     // fileSize must match the actual file size. Returns true on success; on
-    // failure a description is written to error (if given).
+    // failure a description is written to error (if given). shouldCancel is
+    // checked before each block and while waiting for the receiver; when it
+    // returns true the transfer is cancelled and error is CANCELLED.
     static bool sendFile(Stream& serial,
                          const char* remotePath,
                          fs::File& file,
                          size_t fileSize,
                          ProgressCallback onProgress = nullptr,
                          char* error = nullptr,
-                         size_t errorLen = 0);
+                         size_t errorLen = 0,
+                         CancelCheck shouldCancel = nullptr);
 
 private:
     static uint16_t calcCrc16(const uint8_t* data, size_t len);
@@ -36,6 +43,8 @@ private:
     // Sends one packet and waits for the reply: ACK, NAK, CAN, or -1 on timeout
     static int sendPacket(Stream& serial, uint8_t seq, const uint8_t* data,
                           size_t blockSize, bool crcMode);
+    // Tells the receiver to stop (CAN CAN CAN) and waits for it to go quiet
+    static void sendCancel(Stream& serial);
 };
 
 #endif // XMODEM_SENDER_H

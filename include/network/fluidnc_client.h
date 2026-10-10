@@ -15,6 +15,7 @@ struct XModemTransferState {
     volatile bool success;           // Result when completed == true
     volatile size_t bytesSent;       // Bytes successfully transferred
     volatile size_t totalBytes;      // Total file size in bytes
+    volatile bool cancelRequested;   // Set by the UI; the sender cancels before its next block
     char filename[128];              // Display filename (written before active=true)
     char error[128];                 // Error message (written before completed=true)
 };
@@ -166,6 +167,9 @@ public:
 
     // Returns true while an XModem transfer task is running.
     static bool isXModemTransferActive();
+
+    // Ask the running XModem transfer to cancel (FluidNC deletes the partial file)
+    static void cancelXModemUpload();
 
     // Access the shared transfer state (read-only from UI).
     static const XModemTransferState& getXModemState();

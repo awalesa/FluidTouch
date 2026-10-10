@@ -40,6 +40,7 @@ public:
     std::vector<uint8_t> file;
     int blocks1K = 0, blocks128 = 0, rejected = 0;
     bool gotEot = false;
+    bool cancelled = false;   // Two CANs in a row: stopped, like FluidNC
 
     size_t write(uint8_t c) override { process(c); return 1; }
     size_t write(const uint8_t *buf, size_t n) override {
@@ -68,6 +69,7 @@ private:
     std::vector<uint8_t> packet_;
     size_t want_ = 0;
     uint8_t expectSeq_ = 1;
+    int cans_ = 0;
 
     void handshake() {
         if (receiving_ && !started_ && millis() >= nextHandshake_) {
@@ -94,6 +96,15 @@ private:
             return;
         }
         if (want_ == 0) {
+            if (cancelled) return;
+            if (c == 0x18) {
+                if (++cans_ >= 2) {
+                    cancelled = true;
+                    rx_.push_back(0x06);
+                }
+                return;
+            }
+            cans_ = 0;
             if (c == 0x01 || c == 0x02) {
                 started_ = true;
                 size_t size = (c == 0x02) ? 1024 : 128;
@@ -148,8 +159,9 @@ private:
 
 static int failures = 0;
 
+// cancelAfter: blocks to accept before asking the sender to cancel (-1: never)
 static void runCase(const char *name, size_t size, ReceiverOptions opt, bool expectOk,
-                    int expect1K = -1, int expect128 = -1) {
+                    int expect1K = -1, int expect128 = -1, int cancelAfter = -1) {
     // Test file: varied bytes, never ending in SUB (which XModem can't keep)
     std::vector<uint8_t> original(size);
     for (size_t i = 0; i < size; i++) original[i] = (uint8_t)((i * 31 + 7) % 251);
@@ -162,10 +174,19 @@ static void runCase(const char *name, size_t size, ReceiverOptions opt, bool exp
     FakeReceiver rx(opt);
     char error[128] = "";
     uint32_t start = millis();
-    bool ok = XModemSender::sendFile(rx, "/sd/test.bin", file, size, nullptr, error, sizeof(error));
+    FakeReceiver *rxp = &rx;
+    XModemSender::CancelCheck cancel = nullptr;
+    if (cancelAfter >= 0) {
+        cancel = [rxp, cancelAfter]() { return rxp->blocks1K + rxp->blocks128 >= cancelAfter; };
+    }
+    bool ok = XModemSender::sendFile(rx, "/sd/test.bin", file, size, nullptr, error, sizeof(error), cancel);
     file.close();
 
     bool pass = ok == expectOk;
+    if (pass && cancelAfter >= 0) {
+        pass = rx.cancelled && strcmp(error, XModemSender::CANCELLED) == 0 &&
+               rx.blocks1K + rx.blocks128 == cancelAfter;
+    }
     if (pass && ok) {
         pass = rx.gotEot && rx.file == original &&
                (expect1K < 0 || rx.blocks1K == expect1K) &&
@@ -203,6 +224,9 @@ int main() {
     ReceiverOptions cancel;
     cancel.cancelOnOpen = true;
     runCase("can't open destination", 3000, cancel, false);
+
+    runCase("cancel while waiting for FluidNC", 30000, std1K, false, -1, -1, 0);
+    runCase("cancel after 5 blocks", 30000, std1K, false, -1, -1, 5);
 
     printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

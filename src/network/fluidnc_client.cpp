@@ -412,7 +412,8 @@ void FluidNCClient::xmodemUploadTask(void* pvParams) {
             xmodemTransferState.bytesSent = sent;
         },
         xmodemTransferState.error,
-        sizeof(xmodemTransferState.error)
+        sizeof(xmodemTransferState.error),
+        []() { return (bool)xmodemTransferState.cancelRequested; }
     );
 
     file.close();
@@ -502,6 +503,12 @@ bool FluidNCClient::startXModemUpload(const char* localPath,
 
 bool FluidNCClient::isXModemTransferActive() {
     return xmodemTransferState.active;
+}
+
+void FluidNCClient::cancelXModemUpload() {
+    if (xmodemTransferState.active) {
+        xmodemTransferState.cancelRequested = true;
+    }
 }
 
 const XModemTransferState& FluidNCClient::getXModemState() {

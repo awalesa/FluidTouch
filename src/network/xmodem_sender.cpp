@@ -99,13 +99,23 @@ int XModemSender::sendPacket(Stream& serial, uint8_t seq, const uint8_t* data,
     return -1;
 }
 
+void XModemSender::sendCancel(Stream& serial) {
+    // FluidNC stops on two CANs in a row; send three, as receivers do
+    serial.write((uint8_t)XMODEM_CAN);
+    serial.write((uint8_t)XMODEM_CAN);
+    serial.write((uint8_t)XMODEM_CAN);
+    serial.flush();
+    drainUntilQuiet(serial, 300);  // FluidNC replies with ACK
+}
+
 bool XModemSender::sendFile(Stream& serial,
                              const char* remotePath,
                              fs::File& file,
                              size_t fileSize,
                              ProgressCallback onProgress,
                              char* error,
-                             size_t errorLen) {
+                             size_t errorLen,
+                             CancelCheck shouldCancel) {
     auto fail = [&](const char* msg) {
         LOG_PRINTF("[XModem] ERROR: %s\n", msg);
         if (error && errorLen > 0) {
@@ -114,6 +124,7 @@ bool XModemSender::sendFile(Stream& serial,
         }
         return false;
     };
+    auto cancelled = [&]() { return shouldCancel && shouldCancel(); };
 
     // -----------------------------------------------------------------------
     // Step 1: Send FluidNC command to put it into XModem-receive mode
@@ -142,7 +153,11 @@ bool XModemSender::sendFile(Stream& serial,
     bool crcMode = true;
     uint32_t waitStart = millis();
     while (millis() - waitStart < 30000) { // up to 30 s
-        int b = readByte(serial, 1200);
+        if (cancelled()) {
+            sendCancel(serial);
+            return fail(CANCELLED);
+        }
+        int b = readByte(serial, 300);
         if (b == XMODEM_CRC) {
             LOG_PRINTLN("[XModem] CRC handshake received");
             receiverReady = true;
@@ -177,6 +192,10 @@ bool XModemSender::sendFile(Stream& serial,
     bool anyAcked = false;
 
     do {
+        if (cancelled()) {
+            sendCancel(serial);
+            return fail(CANCELLED);
+        }
         size_t chunk = fileSize - bytesSent;
         if (chunk > maxBlock) chunk = maxBlock;
         size_t blockSize = (chunk <= XMODEM_BLOCK_SMALL) ? XMODEM_BLOCK_SMALL : maxBlock;
@@ -191,6 +210,10 @@ bool XModemSender::sendFile(Stream& serial,
         bool fellBack = false;
         for (int retry = 0; retry < XMODEM_MAX_RETRIES && !blockAcked; retry++) {
             if (retry > 0) {
+                if (cancelled()) {
+                    sendCancel(serial);
+                    return fail(CANCELLED);
+                }
                 LOG_PRINTF("[XModem] Retry %d for block %u\n", retry, (unsigned)seqNum);
                 if (drainUntilQuiet(serial, 150)) {
                     return fail("FluidNC cancelled the transfer");
@@ -219,10 +242,7 @@ bool XModemSender::sendFile(Stream& serial,
         if (fellBack) continue;
 
         if (!blockAcked) {
-            // Send CANs to abort the receiver
-            serial.write((uint8_t)XMODEM_CAN);
-            serial.write((uint8_t)XMODEM_CAN);
-            serial.flush();
+            sendCancel(serial);
             char msg[64];
             snprintf(msg, sizeof(msg), "FluidNC didn't accept block %u", (unsigned)seqNum);
             return fail(msg);
