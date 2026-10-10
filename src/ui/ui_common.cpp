@@ -234,6 +234,15 @@ static void on_machine_select_cancel(lv_event_t *e) {
     UICommon::hideMachineSelectConfirmDialog();
 }
 
+static void on_connection_error_connect(lv_event_t *e);
+
+// Reconnect to the current machine, e.g. after FluidNC restarted or a cable
+// was replugged: the same as Connect in the connection error dialog
+static void on_machine_select_reconnect(lv_event_t *e) {
+    UICommon::hideMachineSelectConfirmDialog();
+    on_connection_error_connect(e);
+}
+
 void UICommon::init(lv_display_t *disp) {
     display = disp;
 }
@@ -816,9 +825,9 @@ void UICommon::showMachineSelectConfirmDialog() {
     lv_obj_set_style_border_width(machine_select_dialog, 0, 0);
     lv_obj_clear_flag(machine_select_dialog, LV_OBJ_FLAG_SCROLLABLE);
     
-    // Dialog content box (same size as HOLD/ALARM popups)
+    // Dialog content box (wider than the HOLD/ALARM popups to fit four buttons)
     lv_obj_t *content = lv_obj_create(machine_select_dialog);
-    lv_obj_set_size(content, 600, 300);
+    lv_obj_set_size(content, 700, 300);
     lv_obj_center(content);
     lv_obj_set_style_bg_color(content, UITheme::BG_MEDIUM, 0);
     lv_obj_set_style_border_color(content, UITheme::ACCENT_PRIMARY, 0);
@@ -839,20 +848,20 @@ void UICommon::showMachineSelectConfirmDialog() {
     // Message (centered vertically in available space)
     lv_obj_t *msg_label = lv_label_create(content);
     if (power_mgmt_enabled) {
-        lv_label_set_text(msg_label, "Restart to change machines,\nor power off for battery operation.\n\nNote: Press reset button to power on\nafter using power off.");
+        lv_label_set_text(msg_label, "Reconnect to refresh the connection, restart to\nchange machines, or power off for battery operation.\n\nNote: Press reset button to power on\nafter using power off.");
     } else {
-        lv_label_set_text(msg_label, "Restart to change machines.");
+        lv_label_set_text(msg_label, "Reconnect to refresh the connection,\nor restart to change machines.");
     }
     lv_obj_set_style_text_font(msg_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(msg_label, UITheme::TEXT_LIGHT, 0);
     lv_obj_set_style_text_align(msg_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(msg_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(msg_label, 560);
+    lv_obj_set_width(msg_label, 660);
     lv_obj_align(msg_label, LV_ALIGN_TOP_MID, 0, 50);
     
     // Button container (positioned at bottom)
     lv_obj_t *btn_container = lv_obj_create(content);
-    lv_obj_set_size(btn_container, 560, 60);
+    lv_obj_set_size(btn_container, 660, 60);
     lv_obj_set_style_bg_opa(btn_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(btn_container, 0, 0);
     lv_obj_set_style_pad_all(btn_container, 0, 0);
@@ -862,9 +871,23 @@ void UICommon::showMachineSelectConfirmDialog() {
     lv_obj_align(btn_container, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_clear_flag(btn_container, LV_OBJ_FLAG_SCROLLABLE);
     
-    // Restart button (adjust size based on number of buttons)
+    // Button width: four in a row with Power Off, otherwise three
+    lv_coord_t btn_w = power_mgmt_enabled ? 155 : 205;
+
+    // Reconnect button
+    lv_obj_t *reconnect_btn = lv_btn_create(btn_container);
+    lv_obj_set_size(reconnect_btn, btn_w, 50);
+    lv_obj_set_style_bg_color(reconnect_btn, UITheme::BTN_CONNECT, 0);
+    lv_obj_add_event_cb(reconnect_btn, on_machine_select_reconnect, LV_EVENT_CLICKED, nullptr);
+
+    lv_obj_t *reconnect_label = lv_label_create(reconnect_btn);
+    lv_label_set_text(reconnect_label, LV_SYMBOL_LOOP " Reconnect");
+    lv_obj_set_style_text_font(reconnect_label, &lv_font_montserrat_18, 0);
+    lv_obj_center(reconnect_label);
+
+    // Restart button
     lv_obj_t *restart_btn = lv_btn_create(btn_container);
-    lv_obj_set_size(restart_btn, power_mgmt_enabled ? 165 : 250, 50);
+    lv_obj_set_size(restart_btn, btn_w, 50);
     lv_obj_set_style_bg_color(restart_btn, UITheme::ACCENT_PRIMARY, 0);
     lv_obj_add_event_cb(restart_btn, on_machine_select_confirm, LV_EVENT_CLICKED, nullptr);
     
@@ -876,7 +899,7 @@ void UICommon::showMachineSelectConfirmDialog() {
     // Power off button (only show if power management is enabled)
     if (power_mgmt_enabled) {
         lv_obj_t *poweroff_btn = lv_btn_create(btn_container);
-        lv_obj_set_size(poweroff_btn, 165, 50);
+        lv_obj_set_size(poweroff_btn, btn_w, 50);
         lv_obj_set_style_bg_color(poweroff_btn, lv_color_make(180, 60, 0), 0);  // Orange/red for power off
         lv_obj_add_event_cb(poweroff_btn, on_power_off_confirm, LV_EVENT_CLICKED, nullptr);
         
@@ -886,9 +909,9 @@ void UICommon::showMachineSelectConfirmDialog() {
         lv_obj_center(poweroff_label);
     }
     
-    // Cancel button (adjust size based on number of buttons)
+    // Cancel button
     lv_obj_t *cancel_btn = lv_btn_create(btn_container);
-    lv_obj_set_size(cancel_btn, power_mgmt_enabled ? 165 : 250, 50);
+    lv_obj_set_size(cancel_btn, btn_w, 50);
     lv_obj_set_style_bg_color(cancel_btn, UITheme::BG_BUTTON, 0);
     lv_obj_add_event_cb(cancel_btn, on_machine_select_cancel, LV_EVENT_CLICKED, nullptr);
     

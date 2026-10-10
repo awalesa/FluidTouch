@@ -576,8 +576,9 @@ Project information:
 Appears when clicking the right side of status bar while connected:
 
 - **Title:** System Options
-- **Message:** "Restart to change machines" (or with power off note if power management enabled)
+- **Message:** "Reconnect to refresh the connection, or restart to change machines" (with a power off note if power management is enabled)
 - **Buttons:**
+  - Reconnect - Disconnects and reconnects to the current machine, e.g. after restarting FluidNC or replugging a cable
   - Restart - Restarts ESP32 to return to machine selection
   - Power Off - Deep sleep mode (only if power management enabled)
   - Cancel - Closes dialog
