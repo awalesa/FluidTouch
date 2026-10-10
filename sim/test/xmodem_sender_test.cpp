@@ -32,6 +32,7 @@ struct ReceiverOptions {
     bool checksumMode = false;  // true: ask for checksum packets (NAK handshake)
     bool cancelOnOpen = false;  // true: send CAN at once, like a destination that can't be opened
     int dropAckAfterBlock = -1; // Accept this block (1-based) but lose its ACK, like a dropped USB write
+    int reject1KAfter = -1;     // After this many accepted blocks, reject every 1 KB block (lossy long bursts)
 };
 
 class FakeReceiver : public Stream {
@@ -129,7 +130,8 @@ private:
 
     void checkPacket() {
         size_t size = (packet_[0] == 0x02) ? 1024 : 128;
-        if (size == 1024 && !opt_.accept1K) {
+        if (size == 1024 && (!opt_.accept1K ||
+                             (opt_.reject1KAfter >= 0 && blocks1K + blocks128 >= opt_.reject1KAfter))) {
             rejected++;
             rx_.push_back(0x15);
             return;
@@ -201,7 +203,10 @@ static void runCase(const char *name, size_t size, ReceiverOptions opt, bool exp
                rx.blocks1K + rx.blocks128 == cancelAfter;
     }
     if (pass && ok && opt.dropAckAfterBlock > 0) {
-        pass = stats.timeouts == 1 && rx.duplicates == 1;
+        pass = stats.timeouts == 1 && rx.duplicates == 1 && !stats.smallBlocks;
+    }
+    if (pass && ok && (opt.reject1KAfter >= 0 || !opt.accept1K)) {
+        pass = stats.smallBlocks;
     }
     if (pass && ok) {
         pass = rx.gotEot && rx.file == original &&
@@ -245,6 +250,14 @@ int main() {
     ReceiverOptions lostAck;
     lostAck.dropAckAfterBlock = 2;
     runCase("lost ACK: block resent (5 s wait)", 3000, lostAck, true, 3, 0);
+
+    ReceiverOptions lostFirstAck;
+    lostFirstAck.dropAckAfterBlock = 1;
+    runCase("lost first ACK: no switch (5 s)", 3000, lostFirstAck, true, 3, 0);
+
+    ReceiverOptions lossy;
+    lossy.reject1KAfter = 4;
+    runCase("lossy link: switches mid-file", 10000, lossy, true, 4, 47);
 
     runCase("cancel while waiting for FluidNC", 30000, std1K, false, -1, -1, 0);
     runCase("cancel after 5 blocks", 30000, std1K, false, -1, -1, 5);

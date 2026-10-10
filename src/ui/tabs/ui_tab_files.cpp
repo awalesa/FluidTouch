@@ -2149,10 +2149,11 @@ void UITabFiles::closeXModemProgress(bool success, const char* error) {
     if (status_lbl) {
         // Blocks FluidNC rejected or that got no reply: a sign of a poor link
         const XModemTransferState& st = FluidNCClient::getXModemState();
-        char problems[64] = "";
+        char problems[96] = "";
         if (st.naks || st.timeouts) {
-            snprintf(problems, sizeof(problems), "%u rejected, %u timed out",
-                     (unsigned)st.naks, (unsigned)st.timeouts);
+            snprintf(problems, sizeof(problems), "%u rejected, %u timed out%s",
+                     (unsigned)st.naks, (unsigned)st.timeouts,
+                     st.smallBlocks ? " (switched to small blocks)" : "");
         }
         if (success) {
             uint32_t ms = transfer_start_ms ? millis() - transfer_start_ms : 0;

@@ -6,8 +6,9 @@
 #include <functional>
 
 // XModem sender for FluidNC's $Xmodem/Receive=<path> command.
-// Sends 1 KB blocks (XModem-1K), falling back to 128-byte blocks if FluidNC
-// doesn't accept the first 1 KB block, and uses CRC-16 or checksum packets,
+// Sends 1 KB blocks (XModem-1K), switching to 128-byte blocks if FluidNC keeps
+// rejecting a 1 KB block (no XModem-1K support, or a link that loses bytes in
+// long bursts, such as USB CDC at a high baud), and uses CRC-16 or checksum packets,
 // whichever FluidNC asks for. Must be called from a dedicated FreeRTOS task
 // so it can block waiting for each ACK without stalling the LVGL loop.
 class XModemSender {
@@ -19,6 +20,7 @@ public:
     struct Stats {
         uint32_t naks = 0;      // Blocks FluidNC rejected (corrupted or incomplete)
         uint32_t timeouts = 0;  // Blocks with no reply in time (e.g. a lost ACK); resent
+        bool smallBlocks = false;  // Switched to 128-byte blocks after 1 KB blocks were rejected
     };
 
     // Error text when the transfer was cancelled through shouldCancel

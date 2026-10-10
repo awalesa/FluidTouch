@@ -20,7 +20,7 @@
 #define XMODEM_BLOCK_SMALL  128
 #define XMODEM_BLOCK_1K     1024
 #define XMODEM_MAX_RETRIES  10
-// Failed attempts at the first 1 KB block before falling back to 128 bytes
+// Rejections (NAKs) of a 1 KB block before switching to 128-byte blocks
 #define XMODEM_1K_ATTEMPTS  2
 
 // Only one transfer runs at a time; static so they don't use the task's stack
@@ -185,15 +185,14 @@ bool XModemSender::sendFile(Stream& serial,
 
     // -----------------------------------------------------------------------
     // Step 4: Send the file in 1 KB blocks; a final part of 128 bytes or less
-    //         goes in a 128-byte block. If FluidNC doesn't accept the first
-    //         1 KB block, fall back to 128-byte blocks for the whole file.
+    //         goes in a 128-byte block. If FluidNC keeps rejecting a 1 KB
+    //         block, switch to 128-byte blocks for the rest of the file.
     // -----------------------------------------------------------------------
     LOG_PRINTF("[XModem] Sending %u bytes\n", (unsigned)fileSize);
 
     size_t maxBlock = XMODEM_BLOCK_1K;
     size_t bytesSent = 0;
     uint8_t seqNum = 1;
-    bool anyAcked = false;
 
     do {
         if (cancelled()) {
@@ -212,6 +211,7 @@ bool XModemSender::sendFile(Stream& serial,
 
         bool blockAcked = false;
         bool fellBack = false;
+        int naksThisBlock = 0;
         for (int retry = 0; retry < XMODEM_MAX_RETRIES && !blockAcked; retry++) {
             if (retry > 0) {
                 if (cancelled()) {
@@ -222,11 +222,16 @@ bool XModemSender::sendFile(Stream& serial,
                 if (drainUntilQuiet(serial, 150)) {
                     return fail("FluidNC cancelled the transfer");
                 }
-                if (blockSize == XMODEM_BLOCK_1K && !anyAcked && retry >= XMODEM_1K_ATTEMPTS) {
-                    // This FluidNC doesn't take 1 KB blocks: resend this part
-                    // in 128-byte blocks with the same sequence number
-                    LOG_PRINTLN("[XModem] 1 KB blocks not accepted, using 128-byte blocks");
+                if (blockSize == XMODEM_BLOCK_1K && naksThisBlock >= XMODEM_1K_ATTEMPTS) {
+                    // FluidNC keeps rejecting this 1 KB block: it doesn't take
+                    // 1 KB blocks, or the link loses bytes in a burst that long
+                    // (USB CDC at a high baud). Resend this part and the rest of
+                    // the file in 128-byte blocks with the same sequence number.
+                    // Only NAKs count: after a timeout FluidNC may have accepted
+                    // the block, and a short resend would then duplicate data.
+                    LOG_PRINTLN("[XModem] 1 KB blocks rejected, using 128-byte blocks");
                     maxBlock = XMODEM_BLOCK_SMALL;
+                    stats->smallBlocks = true;
                     file.seek(bytesSent);
                     fellBack = true;
                     break;
@@ -245,6 +250,7 @@ bool XModemSender::sendFile(Stream& serial,
                 stats->timeouts++;
             } else {
                 stats->naks++;  // NAK: retry
+                naksThisBlock++;
             }
         }
         if (fellBack) continue;
@@ -256,7 +262,6 @@ bool XModemSender::sendFile(Stream& serial,
             return fail(msg);
         }
 
-        anyAcked = true;
         bytesSent += chunk;
         if (onProgress) {
             onProgress(bytesSent, fileSize);

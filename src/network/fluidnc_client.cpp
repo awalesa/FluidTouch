@@ -396,6 +396,7 @@ void FluidNCClient::xmodemUploadTask(void* pvParams) {
     );
     xmodemTransferState.naks = stats.naks;
     xmodemTransferState.timeouts = stats.timeouts;
+    xmodemTransferState.smallBlocks = stats.smallBlocks;
 
     file.close();
 
