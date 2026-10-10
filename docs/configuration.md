@@ -138,20 +138,23 @@ A wired connection from the display's USB-C jack to FluidNC's USB host port (ESP
 
 **FluidTouch settings:**
 - **Baud Rate:** Must match FluidNC's `usb_host: baud:` setting (default `115200`, the same as FluidNC's own default). FluidNC uses it to set the display's USB serial chip, so a mismatch means no communication, even though it's a USB connection.
+  - **`500000` is recommended** for faster uploads (about 32 KB/s in testing, versus at most about 11 KB/s at 115200). Set it on both sides.
+  - Higher rates such as 1000000 lose data between the display and FluidNC, so uploads slow down or fail.
 
 **FluidNC configuration:**
 
 ```yaml
 uart3:
   usb_host:
-    baud: 115200
+    baud: 500000
 
 uart_channel3:
   uart_num: 3
-  report_interval_ms: 250
+  report_interval_ms: 0
 ```
 
 **Notes:**
+- `report_interval_ms` can be `0`: FluidTouch turns on status reports itself. A non-zero value also works, and makes FluidNC repeat its startup message until the display answers, which helps FluidTouch re-sync after FluidNC restarts.
 - Files on the display's SD card can be uploaded to FluidNC's SD card or flash over XModem. The destination folder must already exist; FluidNC can't create folders over this connection, so create the default `/fluidtouch/uploads/` folder once from FluidNC's WebUI.
 - Turning on **Load this machine at startup** is recommended, so the display connects as soon as it's powered.
 
