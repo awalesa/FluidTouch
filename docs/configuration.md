@@ -104,7 +104,7 @@ A direct radio link between the display and FluidNC, so no WiFi network or route
 A wired serial connection through the Advance's **UART0 header** (TX=GPIO43, RX=GPIO44). The header also supplies the display's 5 V power, so one cable can both power the display and carry data.
 
 **FluidTouch settings:**
-- **Baud Rate:** Must match the `baud:` of the FluidNC UART it's wired to (default `115200`)
+- **Baud Rate:** Must match the `baud:` of the FluidNC UART it's wired to (default `1000000`)
 
 **Wiring:**
 - Display TX → FluidNC RX, and display RX → FluidNC TX (crossed)
@@ -117,7 +117,7 @@ A wired serial connection through the Advance's **UART0 header** (TX=GPIO43, RX=
 uart1:
   txd_pin: gpio.17   # to the display's RX (GPIO44)
   rxd_pin: gpio.16   # from the display's TX (GPIO43)
-  baud: 115200
+  baud: 1000000
   mode: 8N1
 
 uart_channel1:
@@ -137,7 +137,7 @@ A wired connection from the display's USB-C jack to FluidNC's USB host port (ESP
 > ⚠️ **Requires a FluidNC release newer than v4.1.1.** FluidNC v4.1.1 and earlier can attach to the display's USB serial chip with the wrong driver, so the connection doesn't work reliably. The fix ([bdring/FluidNC#1875](https://github.com/bdring/FluidNC/pull/1875)) is merged but not yet in a FluidNC release. Until then, USB CDC needs a FluidNC build from its main branch.
 
 **FluidTouch settings:**
-- **Baud Rate:** Must match FluidNC's `usb_host: baud:` setting (default `115200`). FluidNC uses it to set the display's USB serial chip, so a mismatch means no communication, even though it's a USB connection.
+- **Baud Rate:** Must match FluidNC's `usb_host: baud:` setting (default `115200`, the same as FluidNC's own default). FluidNC uses it to set the display's USB serial chip, so a mismatch means no communication, even though it's a USB connection.
 
 **FluidNC configuration:**
 

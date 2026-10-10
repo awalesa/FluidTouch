@@ -46,6 +46,7 @@ private:
     static lv_obj_t *lbl_port;
     static lv_obj_t *sw_autoload;      // "Load this machine at startup"
     static bool autoload_touched;      // User changed the switch; stop following the connection type
+    static bool baud_touched;          // User edited the baud rate; stop following the connection type
 
     // ESP-NOW pairing panel (replaces the WiFi fields for ESP-NOW machines)
     static lv_obj_t *espnow_panel;

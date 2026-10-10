@@ -39,6 +39,24 @@ lv_obj_t *UIMachineSelect::lbl_password = nullptr;
 lv_obj_t *UIMachineSelect::lbl_port = nullptr;
 lv_obj_t *UIMachineSelect::sw_autoload = nullptr;
 bool UIMachineSelect::autoload_touched = false;
+bool UIMachineSelect::baud_touched = false;
+
+// Default baud rate for a new wired machine. USB CDC: FluidNC's default
+// usb_host: baud: (115200). UART: 1000000, for a fast header link.
+static uint32_t defaultBaud(ConnectionType type) {
+    return type == CONN_UART ? 1000000 : 115200;
+}
+
+// Set while the baud field is filled in by code, so it isn't taken as an edit
+static bool setting_baud = false;
+
+static void setBaudText(lv_obj_t *ta, uint32_t baud) {
+    char baud_str[12];
+    snprintf(baud_str, sizeof(baud_str), "%lu", (unsigned long)baud);
+    setting_baud = true;
+    lv_textarea_set_text(ta, baud_str);
+    setting_baud = false;
+}
 lv_obj_t *UIMachineSelect::espnow_panel = nullptr;
 lv_obj_t *UIMachineSelect::lbl_espnow_status = nullptr;
 lv_obj_t *UIMachineSelect::lbl_espnow_hint = nullptr;
@@ -638,7 +656,7 @@ void UIMachineSelect::onConfigSave(lv_event_t *e) {
     // Baud rate from text field (only used for wired connections)
     if (ta_baud_rate) {
         uint32_t baud = (uint32_t)atol(lv_textarea_get_text(ta_baud_rate));
-        config.uart_baud_rate = (baud > 0) ? baud : 1000000;
+        config.uart_baud_rate = (baud > 0) ? baud : defaultBaud(config.connection_type);
     }
     config.is_configured = true;
     
@@ -720,7 +738,11 @@ void UIMachineSelect::updateConnectionFields() {
     }
 
     // Baud rate applies to both UART and USB CDC (USB CDC baud must match
-    // FluidNC's uart3: usb_host: baud: setting in config.yaml).
+    // FluidNC's uart3: usb_host: baud: setting in config.yaml). New machines
+    // follow the type's default until the user edits the field.
+    if (ta_baud_rate && !baud_touched && !machines[editing_index].is_configured && (is_uart || is_usb_cdc)) {
+        setBaudText(ta_baud_rate, defaultBaud(type));
+    }
     if (baud_rate_container) {
         if (is_uart || is_usb_cdc) {
             lv_obj_clear_flag(baud_rate_container, (lv_obj_flag_t)(LV_OBJ_FLAG_HIDDEN | LV_OBJ_FLAG_FLOATING));
@@ -1020,13 +1042,14 @@ void UIMachineSelect::showConfigDialog(int index) {
     lv_textarea_set_one_line(ta_baud_rate, true);
     lv_textarea_set_max_length(ta_baud_rate, 10);
     lv_obj_set_style_text_font(ta_baud_rate, &lv_font_montserrat_18, 0);
-    {
-        char baud_str[12];
-        uint32_t baud = (!is_new && machines[index].uart_baud_rate > 0) ? machines[index].uart_baud_rate : 1000000;
-        snprintf(baud_str, sizeof(baud_str), "%lu", (unsigned long)baud);
-        lv_textarea_set_text(ta_baud_rate, baud_str);
-    }
+    baud_touched = false;
+    setBaudText(ta_baud_rate, (!is_new && machines[index].uart_baud_rate > 0)
+                                  ? machines[index].uart_baud_rate
+                                  : defaultBaud(selectedConnectionType()));
     lv_obj_add_event_cb(ta_baud_rate, onTextareaFocused, LV_EVENT_FOCUSED, nullptr);
+    lv_obj_add_event_cb(ta_baud_rate, [](lv_event_t *e) {
+        if (!setting_baud) baud_touched = true;
+    }, LV_EVENT_VALUE_CHANGED, nullptr);
 
     // Password field
     lbl_password = lv_label_create(right_col);
