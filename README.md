@@ -69,7 +69,6 @@ Refer to the **[Development Guide](./docs/development.md)** for additional instr
 - [Buy on Elecrow ↗](https://www.awin1.com/cread.php?awinmid=82721&awinaffid=2663106&ued=https%3A%2F%2Fwww.elecrow.com%2Fcrowpanel-advance-7-0-hmi-esp32-ai-display-800x480-artificial-intelligent-ips-touch-screen-support-meshtastic-and-arduino-lvgl-micropython.html) *(affiliate link)*
 
 **Elecrow CrowPanel 7" Basic ESP32-S3 HMI Display**
-- ⚠️ **Minimal testing:** new features are developed and tested on the Advance. Basic support may be dropped in a future release
 - ESP32-S3-WROOM-1-N4R8 (4MB Flash + 8MB PSRAM)
 - 800×480 TN RGB TFT LCD
 - GT911 Capacitive Touch

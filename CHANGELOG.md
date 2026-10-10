@@ -54,14 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Wrong Alarm Message** - Alarm popups show the correct message, or "Unknown Alarm" for unrecognized alarm numbers (#56)
 - **File Upload with mDNS** - Uploading files works when the machine is addressed by an mDNS name such as `fluidnc.local` (#55, thanks @Jfhow)
-- **Messages Arriving Together** - FluidNC v4 output is now handled line by line, so status reports sent together with other messages are no longer missed (e.g. the HOLD popup after M0 appeared late, and the Files list loaded slowly on port 80)
+- **Missed Messages on FluidNC v4** - FluidNC v4 output is now handled line by line, so status reports sent together with other messages are no longer missed (e.g. the HOLD popup after M0 appeared late, and the Files list loaded slowly on port 80)
 - **Busy During Dwells** - A running file job counts as busy even when FluidNC reports Idle during a G4 dwell, so the Files list, Go To position fields and screen dimming don't act mid-job
 - **Failed Upload Dialog** - A failed WiFi upload now shows the error and a Close button; previously the dialog couldn't be dismissed
 - **Position Fields Bouncing** - The work and machine position fields no longer jump while editing
 
 ### Known Issues
 
-- **Basic and Advance v1.2** - This release has had minimal testing on the Basic display and none on the Advance v1.2. Support for both may be dropped in a future release.
+- **Advance v1.2** - This release hasn't been tested on the Advance v1.2, and its support may be dropped in a future release.
 - **USB CDC needs a newer FluidNC** - FluidNC v4.1.1 and earlier can attach to the display's USB serial chip with the wrong driver, so the connection doesn't work reliably. The fix ([bdring/FluidNC#1875](https://github.com/bdring/FluidNC/pull/1875)) is merged but not yet in a FluidNC release. Until then, USB CDC needs a FluidNC build from its main branch. UART and ESP-NOW are not affected.
 
 ## [1.0.5] - 2026-04-24

@@ -27,7 +27,6 @@
 **Optional:**
 - Elecrow CrowPanel 7" ESP32-S3 HMI Display:
   - [Basic version](https://www.awin1.com/cread.php?awinmid=82721&awinaffid=2663106&ued=https%3A%2F%2Fwww.elecrow.com%2Fesp32-display-7-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html) (4MB flash) *(affiliate link)*
-    - ⚠️ Minimal testing; support may be dropped in a future release
     - 800×480 TN RGB TFT LCD
     - PWM backlight control
     - External battery connector
