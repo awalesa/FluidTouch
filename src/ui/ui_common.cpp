@@ -71,7 +71,10 @@ float UICommon::last_mpos_y = -9999.0f;
 float UICommon::last_mpos_z = -9999.0f;
 
 // Cached system preferences (loaded once at startup)
-bool UICommon::enable_a_axis = false;
+bool UICommon::axis_a_enabled = false;
+bool UICommon::axis_x_enabled = true;
+bool UICommon::axis_y_enabled = true;
+bool UICommon::axis_z_enabled = true;
 
 static char last_machine_state[16] = "";  // Cached state to avoid unnecessary updates
 static bool last_machine_connected = false;  // Cached connection status
@@ -106,33 +109,38 @@ static void status_bar_left_click_handler(lv_event_t *e) {
 static void status_bar_right_click_handler(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
-        // Check if both WiFi and WebSocket are connected
-        bool wifi_connected = (WiFi.status() == WL_CONNECTED);
-        bool ws_connected = FluidNCClient::isConnected();
-        
-        if (wifi_connected && ws_connected) {
-            // Both connected - show restart confirmation dialog
+        // WiFi only matters for WiFi machines; UART, USB CDC and ESP-NOW
+        // machines don't join a network
+        MachineConfig config;
+        bool has_config = MachineConfigManager::getSelectedMachine(config);
+        bool uses_wifi = has_config && config.connection_type == CONN_WIFI;
+        bool wifi_connected = !uses_wifi || (WiFi.status() == WL_CONNECTED);
+        bool machine_connected = FluidNCClient::isConnected();
+
+        if (wifi_connected && machine_connected) {
+            // Connected - show restart confirmation dialog
             UICommon::showMachineSelectConfirmDialog();
-        } else {
-            // One or both disconnected - show connection error dialog
-            MachineConfig config;
-            if (MachineConfigManager::getSelectedMachine(config)) {
-                char error_msg[300];
-                if (!wifi_connected && !ws_connected) {
-                    snprintf(error_msg, sizeof(error_msg), 
-                            "WiFi and machine are disconnected.\n\n%s\n\nClick Connect to reconnect.",
-                            config.name);
-                } else if (!wifi_connected) {
-                    snprintf(error_msg, sizeof(error_msg), 
-                            "WiFi is disconnected.\n\n%s\n\nClick Connect to reconnect.",
-                            config.name);
-                } else {
-                    snprintf(error_msg, sizeof(error_msg), 
-                            "Machine is disconnected.\n\n%s\nURL: %s:%d\n\nClick Connect to reconnect.",
-                            config.name, config.fluidnc_url, config.websocket_port);
-                }
-                UICommon::showConnectionErrorDialog("Connection Lost", error_msg);
+        } else if (has_config) {
+            // Disconnected - show connection error dialog
+            char error_msg[300];
+            if (!wifi_connected && !machine_connected) {
+                snprintf(error_msg, sizeof(error_msg),
+                        "WiFi and machine are disconnected.\n\n%s\n\nClick Connect to reconnect.",
+                        config.name);
+            } else if (!wifi_connected) {
+                snprintf(error_msg, sizeof(error_msg),
+                        "WiFi is disconnected.\n\n%s\n\nClick Connect to reconnect.",
+                        config.name);
+            } else if (uses_wifi) {
+                snprintf(error_msg, sizeof(error_msg),
+                        "Machine is disconnected.\n\n%s\nURL: %s:%d\n\nClick Connect to reconnect.",
+                        config.name, config.fluidnc_url, config.websocket_port);
+            } else {
+                snprintf(error_msg, sizeof(error_msg),
+                        "Machine is disconnected.\n\n%s\n\nClick Connect to reconnect.",
+                        config.name);
             }
+            UICommon::showConnectionErrorDialog("Connection Lost", error_msg);
         }
     }
 }
@@ -226,6 +234,15 @@ static void on_machine_select_cancel(lv_event_t *e) {
     UICommon::hideMachineSelectConfirmDialog();
 }
 
+static void on_connection_error_connect(lv_event_t *e);
+
+// Reconnect to the current machine, e.g. after FluidNC restarted or a cable
+// was replugged: the same as Connect in the connection error dialog
+static void on_machine_select_reconnect(lv_event_t *e) {
+    UICommon::hideMachineSelectConfirmDialog();
+    on_connection_error_connect(e);
+}
+
 void UICommon::init(lv_display_t *disp) {
     display = disp;
 }
@@ -256,10 +273,10 @@ void UICommon::createMainUI() {
     
     // Show connecting popup BEFORE creating UI (faster response)
     // This gives immediate visual feedback while UI is being built
-    if (config.connection_type == CONN_WIRELESS && strlen(config.ssid) > 0) {
+    if (config.connection_type == CONN_WIFI && strlen(config.ssid) > 0) {
         showConnectingPopup(config.name, config.ssid);
         lv_refr_now(nullptr);  // Force immediate display update
-    } else if (config.connection_type == CONN_WIRED) {
+    } else if (config.connection_type != CONN_WIFI) {
         showConnectingPopup(config.name, nullptr);
         lv_refr_now(nullptr);  // Force immediate display update
     }
@@ -271,7 +288,7 @@ void UICommon::createMainUI() {
     UITabs::createTabs();
     
     // Initialize WiFi connection using machine-specific credentials
-    if (config.connection_type == CONN_WIRELESS) {
+    if (config.connection_type == CONN_WIFI) {
         if (strlen(config.ssid) > 0) {
             Serial.println("\n=== WiFi Connection ===");
             Serial.printf("Connecting to WiFi: %s\n", config.ssid);
@@ -348,7 +365,7 @@ void UICommon::createMainUI() {
             return;  // Don't attempt machine connection without WiFi config
         }
     } else {
-        Serial.println("UICommon: Wired connection selected, skipping WiFi initialization");
+        Serial.println("UICommon: Serial or ESP-NOW connection selected, skipping WiFi initialization");
         // Popup already shown at start
     }
     
@@ -420,23 +437,37 @@ void UICommon::createStatusBar() {
     lv_obj_set_width(lbl_wpos_label, 60);  // Fixed width for right alignment
     lv_obj_set_pos(lbl_wpos_label, 200, 3);  // Top line
 
-    lbl_wpos_x = lv_label_create(status_bar);
-    lv_label_set_text(lbl_wpos_x, "X ----.---");
-    lv_obj_set_style_text_font(lbl_wpos_x, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl_wpos_x, UITheme::AXIS_X, 0);
-    lv_obj_set_pos(lbl_wpos_x, 270, 3);
+    // X, Y and Z labels are only created when their axis is enabled for this
+    // machine (reduced-axis machines, e.g. a miter saw fence, disable some).
+    // Remaining enabled axes shift left to fill the gap rather than leaving
+    // blank space where a disabled axis would have been.
+    int wpos_x_cursor = 270;
+    if (isXAxisEnabled()) {
+        lbl_wpos_x = lv_label_create(status_bar);
+        lv_label_set_text(lbl_wpos_x, "X ----.---");
+        lv_obj_set_style_text_font(lbl_wpos_x, &lv_font_montserrat_18, 0);
+        lv_obj_set_style_text_color(lbl_wpos_x, UITheme::AXIS_X, 0);
+        lv_obj_set_pos(lbl_wpos_x, wpos_x_cursor, 3);
+        wpos_x_cursor += 110;
+    }
 
-    lbl_wpos_y = lv_label_create(status_bar);
-    lv_label_set_text(lbl_wpos_y, "Y ----.---");
-    lv_obj_set_style_text_font(lbl_wpos_y, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl_wpos_y, UITheme::AXIS_Y, 0);
-    lv_obj_set_pos(lbl_wpos_y, 380, 3);
+    if (isYAxisEnabled()) {
+        lbl_wpos_y = lv_label_create(status_bar);
+        lv_label_set_text(lbl_wpos_y, "Y ----.---");
+        lv_obj_set_style_text_font(lbl_wpos_y, &lv_font_montserrat_18, 0);
+        lv_obj_set_style_text_color(lbl_wpos_y, UITheme::AXIS_Y, 0);
+        lv_obj_set_pos(lbl_wpos_y, wpos_x_cursor, 3);
+        wpos_x_cursor += 110;
+    }
 
-    lbl_wpos_z = lv_label_create(status_bar);
-    lv_label_set_text(lbl_wpos_z, "Z ----.---");
-    lv_obj_set_style_text_font(lbl_wpos_z, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl_wpos_z, UITheme::AXIS_Z, 0);
-    lv_obj_set_pos(lbl_wpos_z, 490, 3);
+    if (isZAxisEnabled()) {
+        lbl_wpos_z = lv_label_create(status_bar);
+        lv_label_set_text(lbl_wpos_z, "Z ----.---");
+        lv_obj_set_style_text_font(lbl_wpos_z, &lv_font_montserrat_18, 0);
+        lv_obj_set_style_text_color(lbl_wpos_z, UITheme::AXIS_Z, 0);
+        lv_obj_set_pos(lbl_wpos_z, wpos_x_cursor, 3);
+        wpos_x_cursor += 110;
+    }
 
     // A-axis position label (conditionally shown when A-axis is enabled)
     // Position at MPos X location (line 2) when A-axis is enabled
@@ -460,23 +491,33 @@ void UICommon::createStatusBar() {
         lv_obj_set_width(lbl_mpos_label, 60);  // Fixed width for right alignment
         lv_obj_set_pos(lbl_mpos_label, 200, 27);  // Bottom line, aligned with WiFi name
 
-        lbl_mpos_x = lv_label_create(status_bar);
-        lv_label_set_text(lbl_mpos_x, "X ----.---");
-        lv_obj_set_style_text_font(lbl_mpos_x, &lv_font_montserrat_18, 0);
-        lv_obj_set_style_text_color(lbl_mpos_x, UITheme::AXIS_X, 0);
-        lv_obj_set_pos(lbl_mpos_x, 270, 27);
+        int mpos_x_cursor = 270;
+        if (isXAxisEnabled()) {
+            lbl_mpos_x = lv_label_create(status_bar);
+            lv_label_set_text(lbl_mpos_x, "X ----.---");
+            lv_obj_set_style_text_font(lbl_mpos_x, &lv_font_montserrat_18, 0);
+            lv_obj_set_style_text_color(lbl_mpos_x, UITheme::AXIS_X, 0);
+            lv_obj_set_pos(lbl_mpos_x, mpos_x_cursor, 27);
+            mpos_x_cursor += 110;
+        }
 
-        lbl_mpos_y = lv_label_create(status_bar);
-        lv_label_set_text(lbl_mpos_y, "Y ----.---");
-        lv_obj_set_style_text_font(lbl_mpos_y, &lv_font_montserrat_18, 0);
-        lv_obj_set_style_text_color(lbl_mpos_y, UITheme::AXIS_Y, 0);
-        lv_obj_set_pos(lbl_mpos_y, 380, 27);
+        if (isYAxisEnabled()) {
+            lbl_mpos_y = lv_label_create(status_bar);
+            lv_label_set_text(lbl_mpos_y, "Y ----.---");
+            lv_obj_set_style_text_font(lbl_mpos_y, &lv_font_montserrat_18, 0);
+            lv_obj_set_style_text_color(lbl_mpos_y, UITheme::AXIS_Y, 0);
+            lv_obj_set_pos(lbl_mpos_y, mpos_x_cursor, 27);
+            mpos_x_cursor += 110;
+        }
 
-        lbl_mpos_z = lv_label_create(status_bar);
-        lv_label_set_text(lbl_mpos_z, "Z ----.---");
-        lv_obj_set_style_text_font(lbl_mpos_z, &lv_font_montserrat_18, 0);
-        lv_obj_set_style_text_color(lbl_mpos_z, UITheme::AXIS_Z, 0);
-        lv_obj_set_pos(lbl_mpos_z, 490, 27);
+        if (isZAxisEnabled()) {
+            lbl_mpos_z = lv_label_create(status_bar);
+            lv_label_set_text(lbl_mpos_z, "Z ----.---");
+            lv_obj_set_style_text_font(lbl_mpos_z, &lv_font_montserrat_18, 0);
+            lv_obj_set_style_text_color(lbl_mpos_z, UITheme::AXIS_Z, 0);
+            lv_obj_set_pos(lbl_mpos_z, mpos_x_cursor, 27);
+            mpos_x_cursor += 110;
+        }
 
         Serial.println("[StatusBar] Created MPos labels (A-axis disabled)");
     } else {
@@ -564,7 +605,7 @@ void UICommon::createStatusBar() {
     MachineConfig selected_machine;
     
     if (MachineConfigManager::getSelectedMachine(selected_machine)) {
-        const char *symbol = (selected_machine.connection_type == CONN_WIRELESS) ? LV_SYMBOL_WIFI : LV_SYMBOL_USB;
+        const char *symbol = connectionIsWireless(selected_machine.connection_type) ? LV_SYMBOL_WIFI : LV_SYMBOL_USB;
         
         // Symbol (will be colored based on connection status)
         lbl_machine_symbol = lv_label_create(status_bar);
@@ -587,17 +628,23 @@ void UICommon::createStatusBar() {
         lv_obj_align(lbl_modal_states, LV_ALIGN_TOP_RIGHT, -5, 3);
     }
 
-    // Right side Line 2: WiFi network
-    // WiFi network name (right-aligned, positioned first)
-    // If WiFi connected, show actual SSID. Otherwise, show configured SSID from machine settings
+    // Right side Line 2: WiFi network (or serial-link label for UART / USB CDC connections)
+    MachineConfig wifi_config;
+    bool has_config = MachineConfigManager::getSelectedMachine(wifi_config);
+    bool is_serial  = has_config && connectionIsSerial(wifi_config.connection_type);
+
+    bool is_espnow = has_config && wifi_config.connection_type == CONN_ESPNOW;
+
     String wifi_ssid;
-    if (WiFi.isConnected()) {
+    if (is_serial) {
+        wifi_ssid = (wifi_config.connection_type == CONN_USB_CDC) ? "USB CDC" : "UART";
+    } else if (is_espnow) {
+        wifi_ssid = "ESP-NOW";
+    } else if (WiFi.isConnected()) {
         wifi_ssid = WiFi.SSID();
     } else {
-        // Get configured SSID from machine settings
-        MachineConfig config;
-        if (MachineConfigManager::getSelectedMachine(config) && config.ssid[0] != '\0') {
-            wifi_ssid = String(config.ssid);
+        if (has_config && wifi_config.ssid[0] != '\0') {
+            wifi_ssid = String(wifi_config.ssid);
         } else {
             wifi_ssid = "Not Connected";
         }
@@ -608,14 +655,17 @@ void UICommon::createStatusBar() {
     lv_obj_set_style_text_font(lbl_wifi_name, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(lbl_wifi_name, UITheme::UI_INFO, 0);
     lv_obj_set_style_text_align(lbl_wifi_name, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_width(lbl_wifi_name, 180);  // Set fixed width for right alignment
-    lv_obj_align(lbl_wifi_name, LV_ALIGN_BOTTOM_RIGHT, -32, -3);  // 32px from right for symbol (2px spacing)
+    lv_obj_set_width(lbl_wifi_name, 180);
+    lv_obj_align(lbl_wifi_name, LV_ALIGN_BOTTOM_RIGHT, -32, -3);
     
-    // WiFi symbol (will be colored based on connection status)
+    // WiFi/serial symbol
     lbl_wifi_symbol = lv_label_create(status_bar);
-    lv_label_set_text(lbl_wifi_symbol, LV_SYMBOL_WIFI);
+    lv_label_set_text(lbl_wifi_symbol, is_serial ? LV_SYMBOL_USB : LV_SYMBOL_WIFI);
     lv_obj_set_style_text_font(lbl_wifi_symbol, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl_wifi_symbol, WiFi.isConnected() ? UITheme::STATE_IDLE : UITheme::STATE_ALARM, 0);
+    // Serial (UART / USB CDC): always green (connection is physical, not network-dependent)
+    // Wireless: green if connected, red if not (ESP-NOW starts red until the link is up)
+    lv_obj_set_style_text_color(lbl_wifi_symbol,
+        (is_serial || (!is_espnow && WiFi.isConnected())) ? UITheme::STATE_IDLE : UITheme::STATE_ALARM, 0);
     lv_obj_align(lbl_wifi_symbol, LV_ALIGN_BOTTOM_RIGHT, -5, -3);
 }
 
@@ -758,8 +808,8 @@ void UICommon::updateConnectionStatus(bool machine_connected, bool wifi_connecte
         last_auto_reporting = auto_reporting;
     }
     
-    // Update WiFi symbol color
-    if (lbl_wifi_symbol && wifi_connected != last_wifi_connected) {
+    // Update WiFi symbol color (skip for serial connections - symbol is always green)
+    if (lbl_wifi_symbol && wifi_connected != last_wifi_connected && !FluidNCClient::isSerialMode()) {
         lv_obj_set_style_text_color(lbl_wifi_symbol, 
             wifi_connected ? UITheme::STATE_IDLE : UITheme::STATE_ALARM, 0);
         last_wifi_connected = wifi_connected;
@@ -775,9 +825,9 @@ void UICommon::showMachineSelectConfirmDialog() {
     lv_obj_set_style_border_width(machine_select_dialog, 0, 0);
     lv_obj_clear_flag(machine_select_dialog, LV_OBJ_FLAG_SCROLLABLE);
     
-    // Dialog content box (same size as HOLD/ALARM popups)
+    // Dialog content box (wider than the HOLD/ALARM popups to fit four buttons)
     lv_obj_t *content = lv_obj_create(machine_select_dialog);
-    lv_obj_set_size(content, 600, 300);
+    lv_obj_set_size(content, 700, 300);
     lv_obj_center(content);
     lv_obj_set_style_bg_color(content, UITheme::BG_MEDIUM, 0);
     lv_obj_set_style_border_color(content, UITheme::ACCENT_PRIMARY, 0);
@@ -798,20 +848,20 @@ void UICommon::showMachineSelectConfirmDialog() {
     // Message (centered vertically in available space)
     lv_obj_t *msg_label = lv_label_create(content);
     if (power_mgmt_enabled) {
-        lv_label_set_text(msg_label, "Restart to change machines,\nor power off for battery operation.\n\nNote: Press reset button to power on\nafter using power off.");
+        lv_label_set_text(msg_label, "Reconnect to refresh the connection, restart to\nchange machines, or power off for battery operation.\n\nNote: Press reset button to power on\nafter using power off.");
     } else {
-        lv_label_set_text(msg_label, "Restart to change machines.");
+        lv_label_set_text(msg_label, "Reconnect to refresh the connection,\nor restart to change machines.");
     }
     lv_obj_set_style_text_font(msg_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(msg_label, UITheme::TEXT_LIGHT, 0);
     lv_obj_set_style_text_align(msg_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(msg_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(msg_label, 560);
+    lv_obj_set_width(msg_label, 660);
     lv_obj_align(msg_label, LV_ALIGN_TOP_MID, 0, 50);
     
     // Button container (positioned at bottom)
     lv_obj_t *btn_container = lv_obj_create(content);
-    lv_obj_set_size(btn_container, 560, 60);
+    lv_obj_set_size(btn_container, 660, 60);
     lv_obj_set_style_bg_opa(btn_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(btn_container, 0, 0);
     lv_obj_set_style_pad_all(btn_container, 0, 0);
@@ -821,9 +871,23 @@ void UICommon::showMachineSelectConfirmDialog() {
     lv_obj_align(btn_container, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_clear_flag(btn_container, LV_OBJ_FLAG_SCROLLABLE);
     
-    // Restart button (adjust size based on number of buttons)
+    // Button width: four in a row with Power Off, otherwise three
+    lv_coord_t btn_w = power_mgmt_enabled ? 155 : 205;
+
+    // Reconnect button
+    lv_obj_t *reconnect_btn = lv_btn_create(btn_container);
+    lv_obj_set_size(reconnect_btn, btn_w, 50);
+    lv_obj_set_style_bg_color(reconnect_btn, UITheme::BTN_CONNECT, 0);
+    lv_obj_add_event_cb(reconnect_btn, on_machine_select_reconnect, LV_EVENT_CLICKED, nullptr);
+
+    lv_obj_t *reconnect_label = lv_label_create(reconnect_btn);
+    lv_label_set_text(reconnect_label, LV_SYMBOL_LOOP " Reconnect");
+    lv_obj_set_style_text_font(reconnect_label, &lv_font_montserrat_18, 0);
+    lv_obj_center(reconnect_label);
+
+    // Restart button
     lv_obj_t *restart_btn = lv_btn_create(btn_container);
-    lv_obj_set_size(restart_btn, power_mgmt_enabled ? 165 : 250, 50);
+    lv_obj_set_size(restart_btn, btn_w, 50);
     lv_obj_set_style_bg_color(restart_btn, UITheme::ACCENT_PRIMARY, 0);
     lv_obj_add_event_cb(restart_btn, on_machine_select_confirm, LV_EVENT_CLICKED, nullptr);
     
@@ -835,7 +899,7 @@ void UICommon::showMachineSelectConfirmDialog() {
     // Power off button (only show if power management is enabled)
     if (power_mgmt_enabled) {
         lv_obj_t *poweroff_btn = lv_btn_create(btn_container);
-        lv_obj_set_size(poweroff_btn, 165, 50);
+        lv_obj_set_size(poweroff_btn, btn_w, 50);
         lv_obj_set_style_bg_color(poweroff_btn, lv_color_make(180, 60, 0), 0);  // Orange/red for power off
         lv_obj_add_event_cb(poweroff_btn, on_power_off_confirm, LV_EVENT_CLICKED, nullptr);
         
@@ -845,9 +909,9 @@ void UICommon::showMachineSelectConfirmDialog() {
         lv_obj_center(poweroff_label);
     }
     
-    // Cancel button (adjust size based on number of buttons)
+    // Cancel button
     lv_obj_t *cancel_btn = lv_btn_create(btn_container);
-    lv_obj_set_size(cancel_btn, power_mgmt_enabled ? 165 : 250, 50);
+    lv_obj_set_size(cancel_btn, btn_w, 50);
     lv_obj_set_style_bg_color(cancel_btn, UITheme::BG_BUTTON, 0);
     lv_obj_add_event_cb(cancel_btn, on_machine_select_cancel, LV_EVENT_CLICKED, nullptr);
     
@@ -994,7 +1058,7 @@ static void on_connection_error_close(lv_event_t *e) {
 }
 
 static void on_connection_error_connect(lv_event_t *e) {
-    Serial.println("UICommon: Reconnecting WiFi and WebSocket...");
+    Serial.println("UICommon: Reconnecting...");
     UICommon::hideConnectionErrorDialog();
     
     // Get machine config
@@ -1005,59 +1069,66 @@ static void on_connection_error_connect(lv_event_t *e) {
     }
     
     // Show connecting popup
-    UICommon::showConnectingPopup(config.name, config.ssid);
+    UICommon::showConnectingPopup(config.name, config.connection_type == CONN_WIFI ? config.ssid : nullptr);
     lv_refr_now(nullptr);  // Force immediate display update
     
     // Disconnect existing connections
-    WiFi.disconnect();
     FluidNCClient::disconnect();
     
     // Small delay to ensure clean disconnect
     delay(100);
     lv_timer_handler();
     
-    // Reconnect WiFi
-    if (config.connection_type == CONN_WIRELESS && strlen(config.ssid) > 0) {
-        Serial.printf("UICommon: Reconnecting to WiFi: %s\n", config.ssid);
-        WiFi.mode(WIFI_STA);
-        WiFi.setAutoReconnect(false);
-        WiFi.begin(config.ssid, config.password);
+    if (config.connection_type != CONN_WIFI) {
+        // Serial (UART or USB CDC) or ESP-NOW: just reconnect the link
+        Serial.println("UICommon: Reconnecting serial / ESP-NOW link...");
+        FluidNCClient::connect(config);
+        connection_timeout_start = millis();
+        connection_timeout_active = true;
+        connection_error_shown = false;
+        return;
+    }
+    
+    // Wireless: reconnect WiFi then FluidNC
+    WiFi.disconnect();
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(false);
+    WiFi.begin(config.ssid, config.password);
+    
+    // Wait for WiFi connection with timeout (10 seconds)
+    int timeout = 20;
+    while (WiFi.status() != WL_CONNECTED && timeout > 0) {
+        delay(500);
+        Serial.print(".");
+        timeout--;
+        lv_timer_handler();
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nWiFi reconnected!");
+        Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
         
-        // Wait for WiFi connection with timeout (10 seconds)
-        int timeout = 20;
-        while (WiFi.status() != WL_CONNECTED && timeout > 0) {
-            delay(500);
-            Serial.print(".");
-            timeout--;
-            lv_timer_handler();
-        }
+        // Update status bar WiFi indicator
+        UICommon::updateConnectionStatus(false, true);
         
-        if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("\nWiFi reconnected!");
-            Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
-            
-            // Update status bar WiFi indicator
-            UICommon::updateConnectionStatus(false, true);
-            
-            // Update connecting popup to show machine connection
-            UICommon::hideConnectingPopup();
-            UICommon::showConnectingPopup(config.name, nullptr);
-            
-            // Reconnect to FluidNC
-            Serial.printf("UICommon: Reconnecting to FluidNC at %s:%d\n", 
-                         config.fluidnc_url, config.websocket_port);
-            FluidNCClient::connect(config);
-            
-            // Restart connection timeout monitoring (10 seconds)
-            connection_timeout_start = millis();
-            connection_timeout_active = true;
-            connection_error_shown = false;
-        } else {
-            Serial.println("\nWiFi reconnection failed!");
-            UICommon::hideConnectingPopup();
-            UICommon::showConnectionErrorDialog("WiFi Connection Failed", 
-                "Could not reconnect to WiFi.\n\nCheck network settings and try again.");
-        }
+        // Update connecting popup to show machine connection
+        UICommon::hideConnectingPopup();
+        UICommon::showConnectingPopup(config.name, nullptr);
+        
+        // Reconnect to FluidNC
+        Serial.printf("UICommon: Reconnecting to FluidNC at %s:%d\n", 
+                     config.fluidnc_url, config.websocket_port);
+        FluidNCClient::connect(config);
+        
+        // Restart connection timeout monitoring (10 seconds)
+        connection_timeout_start = millis();
+        connection_timeout_active = true;
+        connection_error_shown = false;
+    } else {
+        Serial.println("\nWiFi reconnection failed!");
+        UICommon::hideConnectingPopup();
+        UICommon::showConnectionErrorDialog("WiFi Connection Failed", 
+            "Could not reconnect to WiFi.\n\nCheck network settings and try again.");
     }
 }
 
@@ -1196,20 +1267,47 @@ void UICommon::checkConnectionTimeout() {
         return;
     }
     
-    // Check if timeout exceeded (10 seconds)
+    // Check if timeout exceeded (10 seconds; 20 for ESP-NOW, whose channel
+    // search can take ~16 s when FluidNC has moved to another channel)
     uint32_t elapsed = millis() - connection_timeout_start;
-    if (elapsed >= 10000 && !connection_error_shown && !ever_connected_successfully) {
+    uint32_t timeout = FluidNCClient::isEspNowMode() ? 20000 : 10000;
+    if (elapsed >= timeout && !connection_error_shown && !ever_connected_successfully) {
         // Only show error if we've never connected successfully (prevents popup on brief disconnects after initial connection)
         connection_error_shown = true;
         
         // Get machine config for error message
         MachineConfig config;
         if (MachineConfigManager::getSelectedMachine(config)) {
-            // Build error message
+            // Build error message - serial vs wireless specific
             char error_msg[300];
-            snprintf(error_msg, sizeof(error_msg), 
-                    "Could not connect to machine:\n%s\n\nURL: %s:%d\n\nCheck that the machine is powered on\nand network connection is available.",
-                    config.name, config.fluidnc_url, config.websocket_port);
+            if (config.connection_type == CONN_UART) {
+                uint32_t rxBytes = FluidNCClient::getUartBytesReceived();
+                snprintf(error_msg, sizeof(error_msg),
+                        "Could not connect to machine:\n%s\n\nUART0 header: TX=43, RX=44 @ %d baud\n"
+                        "Bytes received: %d\n\n"
+                        "Check wiring (TX>RX cross) and baud rate,\n"
+                        "and that USB-C is unplugged.",
+                        config.name, (int)config.uart_baud_rate, (int)rxBytes);
+            } else if (config.connection_type == CONN_USB_CDC) {
+                uint32_t rxBytes = FluidNCClient::getUartBytesReceived();
+                snprintf(error_msg, sizeof(error_msg),
+                        "Could not connect to machine:\n%s\n\nUSB CDC (UART0 via USB-C jack @ %d baud)\n"
+                        "Bytes received: %d\n\n"
+                        "Baud must match uart3: usb_host: baud: in FluidNC.\n"
+                        "Needs a FluidNC release newer than v4.1.1.",
+                        config.name, (int)config.uart_baud_rate, (int)rxBytes);
+            } else if (config.connection_type == CONN_ESPNOW) {
+                snprintf(error_msg, sizeof(error_msg),
+                        "Could not reach machine over ESP-NOW:\n%s\n\n"
+                        "Check that FluidNC (v4.1.0 or later) is powered on.\n"
+                        "If FluidNC was unpaired or switched between\n"
+                        "AP and STA WiFi mode, pair it again.",
+                        config.name);
+            } else {
+                snprintf(error_msg, sizeof(error_msg), 
+                        "Could not connect to machine:\n%s\n\nURL: %s:%d\n\nCheck that the machine is powered on\nand network connection is available.",
+                        config.name, config.fluidnc_url, config.websocket_port);
+            }
             
             // Show error dialog
             showConnectionErrorDialog("Machine Connection Failed", error_msg);
@@ -1342,7 +1440,7 @@ void UICommon::showAlarmPopup(const char *message) {
     
     // Message label
     alarm_popup_msg_label = lv_label_create(dialog);
-    lv_label_set_text(alarm_popup_msg_label, message && strlen(message) > 0 ? message : "Alarm condition detected");
+    lv_label_set_text(alarm_popup_msg_label, message && strlen(message) > 0 ? message : "Unknown Alarm");
     lv_obj_set_style_text_font(alarm_popup_msg_label, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(alarm_popup_msg_label, UITheme::TEXT_LIGHT, 0);
     lv_obj_set_width(alarm_popup_msg_label, 520);
@@ -1368,8 +1466,9 @@ void UICommon::showAlarmPopup(const char *message) {
         FluidNCClient::sendCommand("\x18"); // Ctrl-X (soft reset)
         delay(100);
         FluidNCClient::sendCommand("$X\n");   // Unlock
-        // Clear the last message so it doesn't persist after clearing the alarm
+        // Clear the last/alarm message so it doesn't persist after clearing the alarm
         FluidNCClient::clearLastMessage();
+        FluidNCClient::clearAlarmMessage();
         if (alarm_popup_msg_label) lv_label_set_text(alarm_popup_msg_label, "");
     }, LV_EVENT_CLICKED, nullptr);
     
@@ -1405,7 +1504,7 @@ void UICommon::hideAlarmPopup() {
 }
 
 // Check current state and manage popups accordingly
-void UICommon::checkStatePopups(int current_state, const char *last_message) {
+void UICommon::checkStatePopups(int current_state, const char *last_message, const char *alarm_message) {
     // If state changed from previous, reset dismissal flags and hide any existing popups
     if (current_state != last_popup_state && last_popup_state != -1) {
         // State changed - reset dismissal flags
@@ -1429,10 +1528,14 @@ void UICommon::checkStatePopups(int current_state, const char *last_message) {
             lv_label_set_text(hold_popup_msg_label, last_message);
         }
     } else if (current_state == STATE_ALARM && !alarm_popup_dismissed) {
+        // Prefer the dedicated, translated alarm message (set only from ALARM:<code>
+        // lines) so unrelated messages - like the auto-report confirmation - never
+        // get shown in the ALARM popup. Fall back to a fixed label if unavailable.
+        const char *alarm_text = (alarm_message && strlen(alarm_message) > 0) ? alarm_message : "Unknown Alarm";
         if (!alarm_popup) {
-            showAlarmPopup(last_message);
-        } else if (alarm_popup_msg_label && last_message) {
-            lv_label_set_text(alarm_popup_msg_label, last_message);
+            showAlarmPopup(alarm_text);
+        } else if (alarm_popup_msg_label && alarm_text) {
+            lv_label_set_text(alarm_popup_msg_label, alarm_text);
         }
     }
     
@@ -1635,24 +1738,76 @@ void UICommon::showWCSLockDialog(const char *wcs_code, const char *wcs_name, voi
 
 // Load system preferences once at startup
 void UICommon::loadSystemPreferences() {
-    // Load enable_a_axis from the selected machine's config (it's machine-specific)
-    enable_a_axis = false;
+    // Load axis config from the selected machine's config (it's machine-specific)
+    axis_a_enabled = false;
+    axis_x_enabled = true;
+    axis_y_enabled = true;
+    axis_z_enabled = true;
     MachineConfig config;
     if (MachineConfigManager::getSelectedMachine(config)) {
-        enable_a_axis = config.enable_a_axis;
+        axis_a_enabled = config.axis_a_enabled;
+        axis_x_enabled = config.axis_x_enabled;
+        axis_y_enabled = config.axis_y_enabled;
+        axis_z_enabled = config.axis_z_enabled;
     }
 
-    Serial.printf("UICommon: Loaded system preferences - enable_a_axis=%d\n", enable_a_axis);
+    Serial.printf("UICommon: Loaded system preferences - axis_x_enabled=%d, axis_y_enabled=%d, axis_z_enabled=%d, axis_a_enabled=%d\n",
+                  axis_x_enabled, axis_y_enabled, axis_z_enabled, axis_a_enabled);
 }
 
 // Get cached A-axis enabled preference
 bool UICommon::isAAxisEnabled() {
-    return enable_a_axis;
+    return axis_a_enabled;
 }
 
 // Set cached A-axis enabled preference (call after saving to preferences)
 void UICommon::setAAxisEnabled(bool enabled) {
-    enable_a_axis = enabled;
-    Serial.printf("UICommon: Updated enable_a_axis to %d\n", enabled);
+    axis_a_enabled = enabled;
+    Serial.printf("UICommon: Updated axis_a_enabled to %d\n", enabled);
+}
+
+// Get cached X-axis enabled preference
+bool UICommon::isXAxisEnabled() {
+    return axis_x_enabled;
+}
+
+// Set cached X-axis enabled preference (call after saving to preferences)
+void UICommon::setXAxisEnabled(bool enabled) {
+    axis_x_enabled = enabled;
+    Serial.printf("UICommon: Updated axis_x_enabled to %d\n", enabled);
+}
+
+// Get cached Y-axis enabled preference
+bool UICommon::isYAxisEnabled() {
+    return axis_y_enabled;
+}
+
+// Set cached Y-axis enabled preference (call after saving to preferences)
+void UICommon::setYAxisEnabled(bool enabled) {
+    axis_y_enabled = enabled;
+    Serial.printf("UICommon: Updated axis_y_enabled to %d\n", enabled);
+}
+
+// Get cached Z-axis enabled preference
+bool UICommon::isZAxisEnabled() {
+    return axis_z_enabled;
+}
+
+// Set cached Z-axis enabled preference (call after saving to preferences)
+void UICommon::setZAxisEnabled(bool enabled) {
+    axis_z_enabled = enabled;
+    Serial.printf("UICommon: Updated axis_z_enabled to %d\n", enabled);
+}
+
+// General per-axis enabled check. X/Y/Z reflect the selected machine's
+// reduced-axis config; A delegates to isAAxisEnabled().
+bool UICommon::isAxisEnabled(char axis) {
+    switch (axis) {
+        case 'X': case 'x': return axis_x_enabled;
+        case 'Y': case 'y': return axis_y_enabled;
+        case 'Z': case 'z': return axis_z_enabled;
+        case 'A': case 'a': return axis_a_enabled;
+        default: return true;
+    }
 }
 

@@ -1,6 +1,8 @@
 #include "core/power_manager.h"
 #include "network/fluidnc_client.h"
+#include "ui/upload_manager.h"
 #include "config.h"
+#include "debug_log.h"
 #include <Preferences.h>
 #include <Arduino.h>
 #include <WiFi.h>
@@ -55,8 +57,11 @@ void PowerManager::update(int machine_state) {
     }
     
     // Power management ONLY applies to IDLE and DISCONNECTED states
-    // All other states (RUN, ALARM, HOLD, JOG, etc.) stay at full brightness
-    if (machine_state != STATE_IDLE && machine_state != STATE_DISCONNECTED) {
+    // All other states (RUN, ALARM, HOLD, JOG, etc.) stay at full brightness,
+    // and so does an upload (FluidNC reports Idle meanwhile; deep sleep would
+    // cut the transfer off)
+    bool uploading = UploadManager::isUploading() || FluidNCClient::isXModemTransferActive();
+    if ((machine_state != STATE_IDLE && machine_state != STATE_DISCONNECTED) || uploading) {
         if (current_state != FULL_BRIGHTNESS) {
             enterFullBrightness();
         }
@@ -218,7 +223,7 @@ void PowerManager::applyNormalBrightness() {
 
 void PowerManager::enterFullBrightness() {
     if (current_state != FULL_BRIGHTNESS) {
-        Serial.printf("PowerManager: Entering FULL_BRIGHTNESS (brightness=%d)\n", normal_brightness);
+        LOG_PRINTF("PowerManager: Entering FULL_BRIGHTNESS (brightness=%d)\n", normal_brightness);
         display_driver->setBacklight(normal_brightness);
         current_state = FULL_BRIGHTNESS;
         state_changed = true;
@@ -227,7 +232,7 @@ void PowerManager::enterFullBrightness() {
 
 void PowerManager::enterDimmed() {
     if (current_state != DIMMED) {
-        Serial.printf("PowerManager: Entering DIMMED (brightness=%d)\n", dim_brightness);
+        LOG_PRINTF("PowerManager: Entering DIMMED (brightness=%d)\n", dim_brightness);
         display_driver->setBacklight(dim_brightness);
         current_state = DIMMED;
         state_changed = true;
@@ -236,7 +241,7 @@ void PowerManager::enterDimmed() {
 
 void PowerManager::enterScreenOff() {
     if (current_state != SCREEN_OFF) {
-        Serial.println("PowerManager: Entering SCREEN_OFF");
+        LOG_PRINTLN("PowerManager: Entering SCREEN_OFF");
         display_driver->setBacklightOff();
         current_state = SCREEN_OFF;
         state_changed = true;

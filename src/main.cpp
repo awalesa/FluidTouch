@@ -2,6 +2,8 @@
 #include <lvgl.h>
 #include <WiFi.h>
 #include <Preferences.h>
+#include "config.h"                  // PREFS_NAMESPACE
+#include "debug_log.h"               // Global serial-debug mute (LOG_* macros)
 #include "core/display_driver.h"     // Display driver module
 #include "core/touch_driver.h"       // Touch driver module
 #include "core/power_manager.h"      // Power management module
@@ -14,6 +16,7 @@
 #include "ui/ui_tabs.h"         // UI tabs module
 #include "ui/settings_manager.h" // Settings import/export/clear
 #include "ui/tabs/ui_tab_status.h" // Status tab for updates
+#include "ui/tabs/ui_tab_main.h"   // Main tab (reduced-axis machines) for updates
 #include "ui/tabs/ui_tab_files.h" // Files tab for refresh check
 #include "ui/tabs/ui_tab_macros.h" // Macros tab for progress updates
 #include "ui/tabs/ui_tab_terminal.h" // Terminal tab for updates
@@ -23,9 +26,44 @@
 #include "ui/tabs/control/ui_tab_control_probe.h"   // Probe tab for probe indicator
 #include "ui/machine_config.h"  // Machine configuration manager
 
+// Global serial-debug mute flag (declared extern in debug_log.h).
+// Set true by FluidNCClient while a UART / USB CDC connection owns UART0.
+bool g_serialMuted = false;
+
+// True if any saved machine connects to FluidNC over UART0 (the UART0 header
+// or USB CDC). The debug console is UART0 too, so while FluidNC is wired up
+// anything it printed would go straight into FluidNC, and bytes such as '!'
+// (feed hold) or 0x80-0xBF (overrides) are realtime commands to it. Checking
+// every machine, not just the last one used, covers the machine list and a
+// WiFi machine being used while FluidNC is still plugged in.
+static bool anyMachineUsesUart0() {
+    Preferences prefs;
+    prefs.begin(PREFS_NAMESPACE, true);
+    bool uses = false;
+    for (int i = 0; i < MAX_MACHINES && !uses; i++) {
+        String prefix = "m" + String(i) + "_";
+        if (prefs.getBool((prefix + "cfg").c_str(), false)) {
+            uint8_t type = prefs.getUChar((prefix + "type").c_str(), CONN_WIFI);
+            uses = type == CONN_UART || type == CONN_USB_CDC;
+        }
+    }
+    prefs.end();
+    return uses;
+}
+
 void setup()
 {
-    Serial.begin(115200);
+    if (anyMachineUsesUart0()) {
+        // Leave the debug console off: Serial.print() does nothing until
+        // Serial.begin(), and FluidNCClient::connect() opens UART0 for FluidNC
+        g_serialMuted = true;
+        stopUart0Logging();
+    } else {
+        // Enlarge RX buffer before begin so a controller already pumping status
+        // reports into UART0 can't overflow the default 256 B buffer during boot.
+        Serial.setRxBufferSize(2048);
+        Serial.begin(115200);
+    }
     delay(1000);
     Serial.println("\n\n=== FluidTouch - LVGL 9 with LovyanGFX ===");
     Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
@@ -101,20 +139,23 @@ void setup()
         Serial.println("Showing machine selection screen...");
         UIMachineSelect::show(displayDriver.getDisplay());
     } else {
-        // Auto-load first configured machine
-        Serial.println("Auto-loading first machine...");
+        // Auto-load the last machine used, or the first configured one
+        Serial.println("Auto-loading last machine...");
         MachineConfig machines[MAX_MACHINES];
         MachineConfigManager::loadMachines(machines);
-        
-        // Find first configured machine
-        int first_machine_index = -1;
-        for (int i = 0; i < MAX_MACHINES; i++) {
-            if (machines[i].is_configured) {
-                first_machine_index = i;
-                break;
+
+        int first_machine_index = MachineConfigManager::getSelectedMachineIndex();
+        if (first_machine_index < 0 || first_machine_index >= MAX_MACHINES ||
+            !machines[first_machine_index].is_configured) {
+            first_machine_index = -1;
+            for (int i = 0; i < MAX_MACHINES; i++) {
+                if (machines[i].is_configured) {
+                    first_machine_index = i;
+                    break;
+                }
             }
         }
-        
+
         if (first_machine_index >= 0) {
             // Set as selected machine and initialize UI
             MachineConfigManager::setSelectedMachineIndex(first_machine_index);
@@ -132,24 +173,6 @@ void setup()
 
 void loop()
 {
-    // Forward any Serial input to FluidNC (for debugging via Serial Monitor)
-    static char serial_buf[128];
-    static uint8_t serial_buf_pos = 0;
-    while (Serial.available()) {
-        char c = Serial.read();
-        if (c == '\n' || c == '\r') {
-            if (serial_buf_pos > 0) {
-                serial_buf[serial_buf_pos++] = '\n';
-                serial_buf[serial_buf_pos] = '\0';
-                Serial.printf("[Serial->FluidNC] %s", serial_buf);
-                FluidNCClient::sendCommand(serial_buf);
-                serial_buf_pos = 0;
-            }
-        } else if (serial_buf_pos < sizeof(serial_buf) - 2) {
-            serial_buf[serial_buf_pos++] = c;
-        }
-    }
-
     // Handle screenshot server web requests
     ScreenshotServer::handleClient();
     
@@ -162,6 +185,10 @@ void loop()
     // Check for pending file list refresh (from Files tab delete callback)
     UITabFiles::checkPendingRefresh();
     
+    // Poll upload state and update the progress dialogs (XModem when wired, HTTP over WiFi)
+    UITabFiles::checkXModemProgress();
+    UITabFiles::checkUploadProgress();
+    
     // Update UI from FluidNC status (every 250ms)
     static uint32_t lastUIUpdate = 0;
     uint32_t currentMillis = millis();
@@ -169,7 +196,9 @@ void loop()
         lastUIUpdate = currentMillis;
         
         bool machine_connected = FluidNCClient::isConnected();
-        bool wifi_connected = (WiFi.status() == WL_CONNECTED);
+        // In ESP-NOW mode the radio symbol shows the ESP-NOW link instead of WiFi
+        bool wifi_connected = FluidNCClient::isEspNowMode() ? FluidNCClient::espnowLink().connected()
+                                                            : (WiFi.status() == WL_CONNECTED);
         
         // Update connection status symbols (always update, even if not connected)
         UICommon::updateConnectionStatus(machine_connected, wifi_connected);
@@ -201,7 +230,7 @@ void loop()
             UICommon::updateWorkPosition(status.wpos_x, status.wpos_y, status.wpos_z, status.wpos_a);
 
             // Check for HOLD/ALARM state and show popups if needed
-            UICommon::checkStatePopups(status.state, status.last_message);
+            UICommon::checkStatePopups(status.state, status.last_message, status.alarm_message);
 
             // Update Control Actions pause/resume button based on machine state
             UITabControlActions::updatePauseButton(status.state);
@@ -222,6 +251,13 @@ void loop()
             UITabStatus::updateProbe(status.pin_probe);
             UITabControlProbe::updateProbe(status.pin_probe);
             
+            // Update Main tab (reduced-axis machines) - no-ops if not created
+            UITabMain::updateState(state_str);
+            UITabMain::updateWorkPosition(status.wpos_x, status.wpos_y, status.wpos_z, status.wpos_a);
+            UITabMain::updateMachinePosition(status.mpos_x, status.mpos_y, status.mpos_z, status.mpos_a);
+            UITabMain::updateMessage(status.last_message);
+            UITabMain::updateLimitSwitches(status.pin_limit_x, status.pin_limit_y, status.pin_limit_z, status.pin_limit_a);
+
             // Update file progress in status bar (UICommon) instead of status tab
             UICommon::updateFileProgress(status.is_sd_printing, status.sd_percent,
                                         status.sd_filename, status.sd_elapsed_ms);
@@ -243,14 +279,14 @@ void loop()
                 // New macro just started
                 macro_start_time = millis();
                 macro_print_started = false;
-                Serial.printf("[Main] New macro started, tracking start time\n");
+                LOG_PRINTF("[Main] New macro started, tracking start time\n");
             }
             was_macro_running = is_macro_running;
             
             if (status.is_sd_printing && status.sd_percent > 0 && is_macro_running) {
                 macro_print_started = true;  // Mark that print has started
                 completion_display_start = 0;  // Reset completion timer while printing
-                Serial.printf("[Main] Showing progress: printing=%d, percent=%.1f, macro_running=%d\n", 
+                LOG_PRINTF("[Main] Showing progress: printing=%d, percent=%.1f, macro_running=%d\n", 
                     status.is_sd_printing, status.sd_percent, is_macro_running);
                 // Use the stored macro name (not the SD filename)
                 UITabMacros::updateProgress((int)status.sd_percent, UITabMacros::getRunningMacroName(), status.last_message);
@@ -262,26 +298,26 @@ void loop()
                 if (is_macro_running && macro_print_started && !status.is_sd_printing) {
                     // Normal case: SD print started and then stopped
                     macro_completed = true;
-                    Serial.printf("[Main] Macro completed (normal)\n");
+                    LOG_PRINTF("[Main] Macro completed (normal)\n");
                 } else if (is_macro_running && !macro_print_started && macro_start_time > 0 && 
                           (millis() - macro_start_time >= FAST_MACRO_TIMEOUT_MS)) {
                     // Fast macro case: never saw SD activity, but enough time passed
                     macro_completed = true;
-                    Serial.printf("[Main] Macro completed (fast, no SD activity detected)\n");
+                    LOG_PRINTF("[Main] Macro completed (fast, no SD activity detected)\n");
                 }
                 
                 if (macro_completed) {
                     // Macro completed - start 2-second display timer if not already started
                     if (completion_display_start == 0) {
                         completion_display_start = millis();
-                        Serial.printf("[Main] Showing 100%% for 2 seconds\n");
+                        LOG_PRINTF("[Main] Showing 100%% for 2 seconds\n");
                         // Show 100% with the macro name
                         UITabMacros::updateProgress(100, UITabMacros::getRunningMacroName(), "Complete");
                         UITabMacros::showProgress();
                     } else {
                         // Check if 2 seconds have elapsed
                         if (millis() - completion_display_start >= COMPLETION_DISPLAY_MS) {
-                            Serial.printf("[Main] Completion display timeout, clearing macro\n");
+                            LOG_PRINTF("[Main] Completion display timeout, clearing macro\n");
                             UITabMacros::clearRunningMacro();
                             macro_print_started = false;
                             completion_display_start = 0;
@@ -304,8 +340,9 @@ void loop()
             // Update Override tab
             UITabControlOverride::updateValues(status.feed_override, status.rapid_override, status.spindle_override);
             
-            // Update power manager with current machine state
-            PowerManager::update(status.state);
+            // Update power manager with current machine state. A G4 dwell
+            // reports Idle mid-job; keep the display awake until the job ends.
+            PowerManager::update(status.is_sd_printing ? STATE_RUN : status.state);
         } else {
             // Machine disconnected - show OFFLINE state and reset all values to dashes
             UICommon::updateMachineState("OFFLINE");
@@ -320,6 +357,11 @@ void loop()
             UITabStatus::updateRapidOverride(-9999.0f);        // Reset rapid override
             UITabStatus::updateSpindle(-9999.0f, -9999.0f);    // Reset spindle and override
             UITabStatus::updateModalStates("---", "---", "---", "---", "---", "---", "---", "---", "---");
+
+            // Update Main tab with OFFLINE state and reset all values (no-ops if not created)
+            UITabMain::updateState("OFFLINE");
+            UITabMain::updateWorkPosition(-9999.0f, -9999.0f, -9999.0f, -9999.0f);
+            UITabMain::updateMachinePosition(-9999.0f, -9999.0f, -9999.0f, -9999.0f);
             
             // Update power manager with OFFLINE state (treat as IDLE for power management)
             PowerManager::update(STATE_IDLE);
@@ -344,7 +386,7 @@ void loop()
     static unsigned long lastUpdate = 0;
     if (millis() - lastUpdate > 5000) {
         lastUpdate = millis();
-        Serial.printf("[%lu] LVGL running, Free heap: %d, FluidNC: %s\n", 
+        LOG_PRINTF("[%lu] LVGL running, Free heap: %d, FluidNC: %s\n", 
                       millis()/1000, ESP.getFreeHeap(),
                       FluidNCClient::isConnected() ? "Connected" : "Disconnected");
     }

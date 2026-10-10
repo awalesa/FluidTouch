@@ -6,6 +6,7 @@
 
 - [Development Environment](#development-environment)
 - [Building from Source](#building-from-source)
+- [Desktop Simulator](#desktop-simulator)
 - [Project Architecture](#project-architecture)
 - [Code Style Guidelines](#code-style-guidelines)
 - [Debugging](#debugging)
@@ -35,10 +36,10 @@
     - Internal battery connector with JST PH 2.0mm 2-pin connector
     - Optional acrylic case includes space for battery (e.g., 1200mAh lithium polymer battery)
     - ⚠️ **ESP32-S3 ONLY** - ESP32-P4 versions are NOT supported
-    - ⚠️ **Advance Version Compatibility:** Supports hardware Versions 1.2 and 1.3
-    - **DIP Switch Configuration:** Both versions require DIP switches S0 and S1 set to position 1
-    - **Version 1.3:** Fully tested (use `elecrow-crowpanel-7-advance-v13` build environment)
-    - **Version 1.2:** ⚠️ Untested (use `elecrow-crowpanel-7-advance-v12` build environment)
+    - ⚠️ **Advance Version Compatibility:** Supports hardware Versions 1.2 through 1.5
+    - **DIP Switch Configuration:** All versions require DIP switches S0 and S1 set to position 1
+    - **Versions 1.3, 1.4 and 1.5:** Fully tested (use `elecrow-crowpanel-7-advance-v13` build environment for all three; v1.4 only changed the boot/reset buttons and v1.5 only changed the silkscreen)
+    - **Version 1.2:** ⚠️ Untested, and support may be dropped in a future release (use `elecrow-crowpanel-7-advance-v12` build environment)
 - Serial terminal (PlatformIO includes one)
 - Chrome/Edge browser (for ESP Web Tools testing)
 
@@ -141,6 +142,26 @@ platformio device monitor -b 115200
 - Basic Firmware: `.pio/build/elecrow-crowpanel-7-basic/firmware.bin`
 - Advance v1.2 Firmware: `.pio/build/elecrow-crowpanel-7-advance-v12/firmware.bin`
 - Advance v1.3 Firmware: `.pio/build/elecrow-crowpanel-7-advance-v13/firmware.bin`
+
+---
+
+## Desktop Simulator
+
+The `sim/` folder builds the firmware UI as a Windows desktop app (SDL2
+window, mouse = touch) that connects to a **real FluidNC controller** over
+your PC's network. The UI code, `main.cpp` and the FluidNC client are
+compiled unchanged, so most UI work can be done without flashing hardware.
+
+```powershell
+.\sim\build.ps1 -Run
+```
+
+One-time setup (MSYS2 + GCC + SDL2), usage, the fake FluidNC server for
+offline testing, scripted screenshots and how the simulator works are all in
+**[sim/README.md](../sim/README.md)**.
+
+Still check performance, touch feel and display colors on the device before
+releasing. See the simulator's limitations list.
 
 ---
 
@@ -301,6 +322,8 @@ Serial.printf("Free heap: %d, Free PSRAM: %d\n",
     ESP.getFreeHeap(), ESP.getFreePsram());
 ```
 
+**Wired machines turn the console off:** The debug console is UART0, which is also the wired FluidNC link (the Advance's UART0 header and the USB-C jack used by USB CDC). If any saved machine uses UART or USB CDC, the console stays off from boot so nothing is printed into FluidNC. To debug over the serial monitor, delete or change those machines and restart.
+
 ### Screenshot Server
 
 Access live display at `http://[ESP32-IP]`
@@ -395,6 +418,7 @@ Serial.printf("LVGL used: %d KB\n", mon.total_size - mon.free_size);
 ### Testing Checklist
 
 - [ ] Compiles without warnings
+- [ ] Simulator still builds (`.\sim\build.ps1`)
 - [ ] Flash usage acceptable
 - [ ] UI responsive on hardware
 - [ ] Touch input works correctly

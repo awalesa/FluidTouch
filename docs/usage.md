@@ -21,35 +21,30 @@
 
 Connect the display to power via USB-C or external power supply. The device will boot and show the FluidTouch splash screen.
 
-### 2. Configure WiFi
+### 2. Add Your Machine
 
-1. After splash screen, you'll see the machine selection screen
-2. If no machines are configured, add your first machine
-3. Go to **Settings → General**
-4. Enter your **WiFi SSID** and **Password**
-5. Tap **Connect**
-6. Wait for "Connected" status (shows IP address)
+After the splash screen you'll see the machine selection screen. If no machines are configured, the Add Machine dialog opens; otherwise tap **Edit**, then **Add**.
 
-### 3. Add Your Machine
-
-1. Return to machine selection (restart if needed)
-2. Tap the **green "Add Machine"** button
-3. Enter machine details:
-   - **Name:** Friendly name (e.g., "CNC Router", "Laser")
-   - **Hostname/IP:** FluidNC IP address (e.g., `192.168.1.100`)
-   - **Port:** WebSocket port (default: `81`)
+1. Enter a **Name** (e.g., "CNC Router", "Laser")
+2. Choose the **Connection** and fill in its fields:
+   - **WiFi:** WiFi SSID and password, FluidNC's IP address or hostname (e.g., `192.168.1.100` or `fluidnc.local`), and the WebSocket port
      - Port 80 for FluidNC v4.0+
      - Port 81 for FluidNC v3.x (WebUI v2)
      - Port 82 for FluidNC v3.x (WebUI v3)
-4. Tap **Save**
-5. Select the machine to connect
+   - **ESP-NOW:** tap **Pair**, then run `$espnow/pair` on FluidNC within 60 seconds (FluidNC v4.1.0 or later)
+   - **UART** (Advance only) or **USB CDC:** the baud rate, which must match FluidNC's setting
 
-### 4. Verify Connection
+   The [Configuration Guide](./configuration.md#connection-types) covers the FluidNC settings and wiring for each connection type.
+3. Optionally turn on **Load this machine at startup** to skip the machine list from now on
+4. Tap **Save**, then **Done**
+5. Tap the machine to connect
+
+### 3. Verify Connection
 
 Check the status bar:
 - **Left:** Should show machine state (IDLE, ALARM, etc.)
 - **Center:** Shows position coordinates
-- **Right:** Shows machine name and WiFi network
+- **Right:** Shows machine name and connection (WiFi network, ESP-NOW, UART or USB CDC)
 
 If showing ALARM, clear it: **Control → Actions → Unlock**
 
@@ -74,7 +69,7 @@ If you have a settings backup file from another FluidTouch device or a previous 
 3. Tap **Clear All Settings** button
 4. Confirm the warning dialog
 5. Device restarts and auto-imports settings
-6. Configure WiFi passwords for wireless machines
+6. Configure WiFi passwords for WiFi machines, and pair ESP-NOW machines again
 
 ### After Import
 
@@ -284,6 +279,22 @@ Status tab displays:
 - Access FluidNC WebUI from browser
 - Check FluidNC YAML configuration for WebSocket port
 - Restart both FluidTouch and FluidNC
+
+### ESP-NOW Won't Connect
+
+**Check:**
+- FluidNC is v4.1.0 or later and within range
+- The machine card shows a paired FluidNC hostname, not "Not paired"
+- Pair again if FluidNC was unpaired, or switched between AP and STA WiFi mode
+
+### Wired (UART / USB CDC) Won't Connect
+
+**Check:**
+- The baud rate matches FluidNC's `baud:` (UART) or `usb_host: baud:` (USB CDC) setting
+- UART: TX and RX are crossed, and the display's USB-C cable is unplugged
+- USB CDC: FluidNC is a release newer than v4.1.1 (see the [Configuration Guide](./configuration.md#usb-cdc))
+
+If a wired machine shows OFFLINE after FluidNC restarts, it reconnects by itself once FluidNC answers. To reconnect at once, tap the machine name in the status bar and choose **Reconnect**.
 
 ### Settings Lost After Power Cycle
 

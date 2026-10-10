@@ -6,6 +6,23 @@
 #include "ui/machine_config.h"
 #include <functional>
 
+// Shared state for an in-progress XModem file transfer.
+// Written by the XModem FreeRTOS task; read by the LVGL main loop.
+// All progress fields are volatile so the compiler never caches them.
+struct XModemTransferState {
+    volatile bool active;            // Transfer in progress
+    volatile bool completed;         // Transfer finished (success or failure)
+    volatile bool success;           // Result when completed == true
+    volatile size_t bytesSent;       // Bytes successfully transferred
+    volatile size_t totalBytes;      // Total file size in bytes
+    volatile bool cancelRequested;   // Set by the UI; the sender cancels before its next block
+    volatile uint32_t naks;          // Blocks FluidNC rejected (written before completed=true)
+    volatile uint32_t timeouts;      // Blocks resent after no reply (e.g. lost ACKs)
+    volatile bool smallBlocks;       // Switched to 128-byte blocks after 1 KB blocks were rejected
+    char filename[128];              // Display filename (written before active=true)
+    char error[128];                 // Error message (written before completed=true)
+};
+
 // Callback type for receiving FluidNC messages (renamed to avoid conflict with ArduinoWebsockets::MessageCallback)
 typedef std::function<void(const char* message)> FluidNCMessageCallback;
 
@@ -53,6 +70,7 @@ struct FluidNCStatus {
     
     // Last message from FluidNC
     char last_message[128]; // Store last [MSG:...] or feedback message
+    char alarm_message[128]; // Translated alarm description, set only from ALARM:<code> lines
     
     // SD card file progress (when running from SD)
     bool is_sd_printing;        // True if running a file from SD card
@@ -94,9 +112,14 @@ struct FluidNCStatus {
         strcpy(modal_coolant, "M9");
         strcpy(modal_tool, "T0");
         last_message[0] = '\0';  // Empty message initially
+        alarm_message[0] = '\0'; // Empty until an ALARM:<code> line is received
         sd_filename[0] = '\0';   // No file initially
         fluidnc_version[0] = '\0';  // Unknown until $Build/Info response received
     }
+
+    // FluidNC reports Idle during a G4 dwell inside a running file, so a
+    // file job in progress also counts as busy
+    bool isIdle() const { return state == STATE_IDLE && !is_sd_printing; }
 };
 
 class FluidNCClient {
@@ -118,6 +141,40 @@ public:
     
     // Check if using auto-reporting (true) or fallback polling (false)
     static bool isAutoReporting();
+
+    // Check the active connection mode
+    static bool isUartMode();    // CONN_UART (hardware UART)
+    static bool isUsbCdcMode();  // CONN_USB_CDC (native USB CDC device)
+    static bool isSerialMode();  // UART or USB CDC (any byte-stream mode)
+    static bool isWiFiMode();    // CONN_WIFI (WebSocket)
+    static bool isEspNowMode();  // CONN_ESPNOW (direct radio link to FluidNC)
+
+    // The ESP-NOW link, also used by the pairing screen before connecting
+    static EspNowLink& espnowLink();
+
+    // Backwards-compat alias - prefer isUartMode() in new code
+    static inline bool isWiredMode() { return isUartMode(); }
+
+    // Get count of bytes received over the active serial stream (debug)
+    static uint32_t getUartBytesReceived();
+
+    // Start an XModem file upload from the Display SD card to FluidNC over the
+    // active serial stream (UART or USB CDC).
+    // localPath  : full path on the Display SD card (e.g. "/myfile.nc")
+    // remotePath : destination on FluidNC (e.g. "/sd/myfile.nc" or "/localfs/myfile.nc")
+    // filename   : display name shown in the progress dialog
+    // Returns false immediately if not in a serial mode or a transfer is already running.
+    static bool startXModemUpload(const char* localPath, const char* remotePath,
+                                  const char* filename);
+
+    // Returns true while an XModem transfer task is running.
+    static bool isXModemTransferActive();
+
+    // Ask the running XModem transfer to cancel (FluidNC deletes the partial file)
+    static void cancelXModemUpload();
+
+    // Access the shared transfer state (read-only from UI).
+    static const XModemTransferState& getXModemState();
     
     // Main loop - call regularly to handle WebSocket events
     static void loop();
@@ -130,6 +187,9 @@ public:
     
     // Clear the stored last message
     static void clearLastMessage();
+    
+    // Clear the stored alarm message
+    static void clearAlarmMessage();
     
     // Request status report (sends "?")
     static void requestStatusReport();
@@ -153,6 +213,7 @@ private:
     static websockets::WebsocketsClient webSocket;
     static FluidNCStatus currentStatus;
     static MachineConfig currentConfig;
+    static String resolvedIP;         // IP address resolved (DNS/mDNS) during connect()
     static uint32_t lastStatusRequestMs;
     static bool initialized;
     static FluidNCMessageCallback messageCallback;  // Optional callback for raw messages
@@ -168,10 +229,37 @@ private:
     // Connection tracking
     static bool everConnectedSuccessfully; // True once first status report received, never reset
     static bool isHandlingDisconnect;     // Guard to prevent re-entrant close() calls
+
+    // Active non-WebSocket connection: CONN_UART or CONN_USB_CDC (Advance
+    // hardware only), CONN_ESPNOW, or CONN_WIFI (for "none of these").
+    static ConnectionType activeSerialMode;
+    static bool espnowLinkUp;  // ESP-NOW link was connected at the last loop()
+    static void espnowLoop();
+    static void saveEspNowPairing(const EspNowPairing& pairing);
+    // Send raw bytes over whichever link is active
+    static void sendRaw(const char* data);
+    static char uartRxBuffer[512];
+    static uint16_t uartRxPos;
+    static uint32_t uartBytesReceived;  // Total bytes received over serial stream (debug counter)
+
+    // XModem transfer state and task (UART / USB CDC)
+    static XModemTransferState xmodemTransferState;
+    static bool isXModemTransfer;       // Pauses normal UART parsing while true
+    static TaskHandle_t xmodemTaskHandle;
+    static void xmodemUploadTask(void* pvParams);
     
+    // Line reassembly for binary frames: FluidNC may pack several lines into one
+    // frame, or split one long line across frames
+    static String rxLineBuffer;           // Partial line waiting for its '\n'
+    static uint32_t rxLineBufferMs;       // When rxLineBuffer last received data
+
     // WebSocket event handlers
     static void onMessageCallback(websockets::WebsocketsMessage message);
     static void onEventsCallback(websockets::WebsocketsEvent event, String data);
+
+    // Handle one complete line from FluidNC (callbacks + parsing)
+    static void handleLine(const char* line);
+    static void flushLineBuffer();
     
     // Parse status report message
     static void parseStatusReport(const char* message);
@@ -185,6 +273,12 @@ private:
     // Auto-reporting and polling helpers
     static void attemptEnableAutoReporting();
     static void performFallbackPolling();
+
+    // Commands sent whenever a connection to FluidNC (re)starts
+    static void sendStartupCommands();
+
+    // Process a complete line received over the active serial stream
+    static void processUartLine(char* line);
     
     // Helper to extract float value from status report
     static float extractFloat(const char* str, const char* key);

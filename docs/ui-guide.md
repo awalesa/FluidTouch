@@ -10,6 +10,7 @@
   - [Status Bar](#status-bar)
   - [Tab Navigation](#tab-navigation)
 - [Status Tab](#status-tab)
+- [Main Tab (X-only machines)](#main-tab-x-only-machines)
 - [Control Tab](#control-tab)
   - [Actions](#actions)
   - [Jog](#jog)
@@ -43,16 +44,19 @@ On startup, FluidTouch displays a splash screen before proceeding to machine sel
 
 ![Machine Selection](./images/machine-selection.png)
 
-The machine selection screen appears after the splash screen when you first power on FluidTouch. It displays all configured machines (up to 4) with their names, WiFi networks, and connection status. Tap any machine to connect.
+The machine selection screen appears after the splash screen when you first power on FluidTouch. It displays all configured machines (up to 4) with their names and connection details: the WiFi network and address, the paired FluidNC hostname for ESP-NOW, or the baud rate for UART and USB CDC. Tap any machine to connect.
 
 If no machines are configured, you'll see a prompt to add your first machine.
 
 Each machine configuration stores:
 - Machine name
-- Connection type (currently only Wireless is supported)
-- WiFi SSID and password
-- FluidNC IP address or hostname
-- WebSocket port (default: 81)
+- Connection type: WiFi, ESP-NOW, UART or USB CDC (UART is Advance only)
+- For WiFi: SSID, password, FluidNC IP address or hostname, and WebSocket port (default: 81)
+- For ESP-NOW: the pairing with FluidNC
+- For UART and USB CDC: the baud rate
+- Whether to load this machine at startup
+
+See the [Configuration Guide](./configuration.md#connection-types) for setting up each connection type.
 
 ### Machine Selection Edit Mode
 
@@ -72,15 +76,20 @@ Clicking the "Edit" button enters edit mode, which allows you to reorder, edit, 
 
 Modal dialog for adding or editing machine configurations:
 
+The fields shown depend on the selected connection type.
+
 **Left Column (64% width):**
 - **Name:** Machine identifier (32 characters max)
-- **SSID:** WiFi network name
-- **FluidNC URL:** IP address or hostname (e.g., 192.168.1.100 or fluidnc.local)
+- **WiFi SSID** and **FluidNC URL** (WiFi): network name, and IP address or hostname (e.g., 192.168.1.100 or fluidnc.local)
+- **ESP-NOW Pairing** panel (ESP-NOW): pairing status, instructions and a **Pair** button
 
 **Right Column (33% width):**
-- **Connection:** Wireless (only option currently)
-- **Password:** WiFi password
-- **Port:** WebSocket port (default: 81)
+- **Connection:** WiFi, ESP-NOW, UART or USB CDC (UART is Advance only)
+- **Password** and **Port** (WiFi): WiFi password and WebSocket port (default: 81)
+- **Baud Rate** (UART and USB CDC): must match FluidNC's setting
+
+**Below the columns:**
+- **Load this machine at startup (skips the machine list)**
 
 **Buttons:**
 - **Save** (bottom left) - Save configuration
@@ -107,7 +116,7 @@ The status bar at the top displays:
 
 **Right Section** (clickable - restart to switch machines):
 - Machine name with connection symbol (top line, blue)
-- WiFi network name (bottom line, cyan)
+- Connection (bottom line, cyan): the WiFi network name, or ESP-NOW, UART or USB CDC
 
 ---
 
@@ -142,6 +151,8 @@ Real-time machine status display with four columns:
 - **Probe** indicator — lights up when the probe pin is active
 - **Limit X / Y / Z (and A)** indicators — light up per axis when a limit switch is triggered
 - Indicators remain visible for at least 500ms after deactivation so brief activations are easy to see
+
+Rows for axes turned off in **Settings → General → Axis Configuration** are hidden.
 
 ### SD Card File Progress
 (while running a job)
@@ -181,6 +192,25 @@ If attempting to probe or zero while a locked WCS is active, a warning popup app
 ---
 
 
+
+## Main Tab (X-only machines)
+
+![Main Tab](./images/main-tab.png)
+
+For machines with only an X axis, such as a miter saw stop or table saw fence, turning off Y and Z in **Settings → General → Axis Configuration** replaces the Status tab with a single **Main** tab that has everything needed for everyday use:
+
+**Left side:**
+- **Work Position:** the X work position; tap it to enter a position to go to
+- **X- / X+** jog buttons on either side of it, using the step sizes and feed rate from **Settings → Jog**
+- **LIMIT** indicator, lit while the X limit switch is triggered
+- **Message** box with FluidNC messages
+
+**Right side - Saved Positions:**
+- **Save** adds the current position (up to 8 per machine, kept in order)
+- Tap a saved position to go there; the one matching the current position is outlined
+- Long-press a saved position to delete it
+
+**Bottom:** STOP, Home X, Zero X and Unlock buttons.
 
 ## Control Tab
 
@@ -322,7 +352,7 @@ Browse and manage files on FluidNC SD card and flash storage:
 - Navigate folders (tap to open)
 - View file sizes
 - Play files (GCode programs)
-- Upload files from browser
+- Upload files from the display's SD card to FluidNC (not available over ESP-NOW)
 - Delete files and folders
 
 **File List:**
@@ -335,23 +365,34 @@ Browse and manage files on FluidNC SD card and flash storage:
 
 ![File Upload Dialog](./images/file-upload-dialog.png)
 
-Modal dialog for uploading files to FluidNC:
+Copies a file from the display's SD card to FluidNC's SD card or flash. The dialog is the same for every connection type; only the transfer method differs:
+
+| Connection | Transfer |
+|---|---|
+| WiFi | HTTP |
+| UART, USB CDC | XModem |
+| ESP-NOW | Not available (no Upload buttons) |
 
 **Steps:**
-1. Tap "Upload" button in Files tab
-2. Dialog shows current directory path
-3. Displays web URL with QR code
-4. Open URL in browser on computer/phone
-5. Select file to upload
-6. Progress bar shows upload status
-7. File appears in file list when complete
+1. Choose **Display SD** in the Files tab's storage list
+2. Tap **Upload** next to the file
+3. Choose the **Destination**: **FluidNC SD Card** or **FluidNC Flash**
+4. The **Folder** defaults to `/fluidtouch/uploads/`. To use another, tap **Change**: a folder browser laid out like the Files tab lists that volume's folders (files are shown dimmed). Tap a folder to open it, **Up** to go back, and **Select This Folder** to use the one you're in. The full path is shown below the folder.
+5. Tap **Upload**
+
+The destination and folder are remembered for the next upload until the display restarts.
+
+**Folders:**
+- Uploads only go to a folder that already exists; the folder browser only offers existing folders. FluidTouch also checks before sending and explains if the folder is missing.
+- The exception is the default `/fluidtouch/uploads/` folder, which a WiFi upload creates if needed. Over UART or USB CDC, FluidNC can't create folders, so create it once from FluidNC's WebUI.
 
 **Upload Progress:**
 - Shows current/total bytes transferred
 - Percentage complete
 - Progress bar visual
-- "Reset device to cancel upload" during transfer
-- "Close" button after completion
+- Transfer rate (KB/s)
+- **Cancel** stops the upload; FluidNC discards the partial file. The rest of the interface keeps running during an upload.
+- After a successful upload, **Open Folder** shows the destination folder in the file list; **Close** returns to the file list
 
 ### Delete Confirmation
 
@@ -447,7 +488,7 @@ The Settings tab contains six sub-tabs for configuration:
 ![Settings General](./images/settings-general.png)
 
 **Machine Selection:**
-- Whether or not to show the machine selection screen. If skipped, it will automatically load the configuration for the first machine.
+- Whether or not to show the machine selection screen. If skipped, it will automatically load the last machine used (or the first machine, if none has been used yet). This suits a display that's wired to one machine: select it once, then turn this off.
 
 **File Browser:**
 - **Folders on Top:** When enabled, folders appear first in the Files tab, followed by files (both sorted alphabetically)
@@ -455,9 +496,10 @@ The Settings tab contains six sub-tabs for configuration:
 **Rotate 180 degrees**
 - Whether or not to rotate the screen 180 degrees.
 
-**Enable A-Axis:**
-- When enabled, a 4th A-axis is shown in the status bar, Status tab, Jog tab, Joystick tab, and Actions tab.
-- Setting is **per-machine** — the toggle applies to the currently selected machine, allowing mixed 3-axis and 4-axis configurations.
+**Axis Configuration:**
+- Switches for the **X, Y, Z** and **A** axes. X, Y and Z are on by default; turn off any your machine doesn't have. Turn on A for a rotary 4th axis, which then appears in the status bar, Status tab, Jog tab, Joystick tab, and Actions tab.
+- Disabled axes are hidden; turning off both Y and Z gives X-only machines the [Main tab](#main-tab-x-only-machines).
+- Settings are **per-machine** — the switches apply to the currently selected machine, allowing mixed configurations.
 - Requires a restart to take effect after changing.
 
 ### Backup
@@ -557,8 +599,9 @@ Project information:
 Appears when clicking the right side of status bar while connected:
 
 - **Title:** System Options
-- **Message:** "Restart to change machines" (or with power off note if power management enabled)
+- **Message:** "Reconnect to refresh the connection, or restart to change machines" (with a power off note if power management is enabled)
 - **Buttons:**
+  - Reconnect - Disconnects and reconnects to the current machine, e.g. after restarting FluidNC or replugging a cable
   - Restart - Restarts ESP32 to return to machine selection
   - Power Off - Deep sleep mode (only if power management enabled)
   - Cancel - Closes dialog

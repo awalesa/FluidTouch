@@ -4,8 +4,8 @@
 
 ## Table of Contents
 
-- [WiFi Configuration](#wifi-configuration)
 - [Machine Configuration](#machine-configuration)
+- [Connection Types](#connection-types)
 - [Jog Settings](#jog-settings)
 - [Probe Settings](#probe-settings)
 - [Preferences Storage](#preferences-storage)
@@ -22,22 +22,16 @@
    - Up to 32 characters
    - Used for identification in status bar
 
-2. **Connection** Connection Type - currently only Wireless is implemented.
+2. **Connection:** How FluidTouch talks to FluidNC. The editor shows only the fields the selected type uses. See [Connection Types](#connection-types) for each one's settings and FluidNC setup.
+   - **WiFi** - over your WiFi network
+   - **ESP-NOW** - a direct radio link, no WiFi network needed (FluidNC v4.1.0 or later)
+   - **UART** - wired, through the display's UART0 header (Advance only; the Basic has no 5 V UART-IN header)
+   - **USB CDC** - wired, through the display's USB-C jack to FluidNC's USB host port
 
-3. **WiFi SSID** Wireless Network SSID.
-   -- SSIDs are case sensitive.
-
-4. **Password** WiFi Password
-
-5. **FluidNC URL:** FluidNC network address
-   - IP address format: `192.168.1.100`
-   - Hostname format: `fluidnc.local` (mDNS)
-
-6. **Port:** WebSocket port number
-   - Default: `81`
-   - Port 80 is used by FluidNC v4.0+
-   - Port 81 is used by WebUI v2 (FluidNC v3.x)
-   - Port 82 is used by WebUI v3 (FluidNC v3.x) - only allows one connection at a time but will switch cleanly between connections
+3. **Load this machine at startup:** Skips the machine list at power-on and connects straight to this machine
+   - Turning it on and saving turns off the machine selection screen (Settings → General → Machine Selection → Show)
+   - On by default for new UART and USB CDC machines, which usually have the display to themselves
+   - With the machine selection screen turned off, FluidTouch loads the last machine used
 
 ### Editing a Machine
 
@@ -69,6 +63,102 @@ Use **Up/Down** buttons to:
 - Stored in ESP32 NVS (non-volatile storage)
 - Survives power cycles and firmware updates
 - Macros are configurable after connection
+
+---
+
+## Connection Types
+
+### WiFi
+
+FluidTouch joins your WiFi network and connects to FluidNC's WebSocket.
+
+1. **WiFi SSID:** Network name (case sensitive)
+2. **Password:** WiFi password
+3. **FluidNC URL:** FluidNC network address
+   - IP address format: `192.168.1.100`
+   - Hostname format: `fluidnc.local` (mDNS)
+4. **Port:** WebSocket port number
+   - Default: `80`
+   - Port 80 is used by FluidNC v4.0+
+   - Port 81 is used by WebUI v2 (FluidNC v3.x)
+   - Port 82 is used by WebUI v3 (FluidNC v3.x) - only allows one connection at a time but will switch cleanly between connections
+
+### ESP-NOW
+
+A direct radio link between the display and FluidNC, so no WiFi network or router is needed. Requires FluidNC **v4.1.0 or later**. FluidNC's WiFi doesn't need to be set up: if it's off, FluidNC turns the radio on for ESP-NOW by itself.
+
+**Pairing:**
+1. Choose **ESP-NOW** as the connection type. The network fields are replaced by a pairing panel.
+2. Tap **Pair**. FluidTouch searches for FluidNC on each WiFi channel.
+3. Within 60 seconds, run `$espnow/pair` on FluidNC, from its WebUI or another terminal.
+4. When the panel shows **Paired with** FluidNC's hostname, tap **Save**.
+
+**Notes:**
+- Machine cards show the paired FluidNC hostname, or "Not paired".
+- If FluidNC moves to another WiFi channel, FluidTouch finds it again and updates the pairing.
+- Pair again if FluidNC was unpaired or switched between AP and STA WiFi mode.
+- File upload isn't available over ESP-NOW.
+
+### UART
+
+A wired serial connection through the Advance's **UART0 header** (TX=GPIO43, RX=GPIO44). The header also supplies the display's 5 V power, so one cable can both power the display and carry data.
+
+**FluidTouch settings:**
+- **Baud Rate:** Must match the `baud:` of the FluidNC UART it's wired to (default `1000000`)
+
+**Wiring:**
+- Display TX → FluidNC RX, and display RX → FluidNC TX (crossed)
+- 5 V and GND from the controller to the header
+- **Unplug the display's USB-C cable** while connected over UART. The header shares UART0 with the display's USB-C serial chip, and FluidTouch turns off its debug console in this mode.
+
+**FluidNC configuration:** Add a UART for the display and a UART channel that uses it. Use the UART pins of your controller's expansion port (see its documentation). This example is for the Doberman S3:
+
+```yaml
+uart2:
+  txd_pin: gpio.0    # to the display's RX (GPIO44)
+  rxd_pin: gpio.35   # from the display's TX (GPIO43)
+  baud: 1000000
+  mode: 8N1
+
+uart_channel2:
+  uart_num: 2
+  report_interval_ms: 75
+```
+
+**Notes:**
+- FluidNC **v4.1.1 or later** is recommended. With `report_interval_ms` set, it repeats its startup message until the display answers, so FluidTouch re-syncs when FluidNC restarts or both power up together.
+- Files on the display's SD card can be uploaded to FluidNC's SD card or flash over XModem. The destination folder must already exist; FluidNC can't create folders over this connection, so create the default `/fluidtouch/uploads/` folder once from FluidNC's WebUI.
+- Turning on **Load this machine at startup** is recommended, so the display connects as soon as it's powered.
+- If FluidNC stops answering (cable unplugged, FluidNC restarted), FluidTouch shows OFFLINE within about 35 seconds and reconnects by itself when FluidNC answers again. To reconnect at once, tap the machine name in the status bar and choose **Reconnect**.
+
+### USB CDC
+
+A wired connection from the display's USB-C jack to FluidNC's USB host port (ESP32-S3 controllers). FluidNC talks to the display's on-board USB serial chip (CH340).
+
+> ⚠️ **Requires a FluidNC release newer than v4.1.1.** FluidNC v4.1.1 and earlier can attach to the display's USB serial chip with the wrong driver, so the connection doesn't work reliably. The fix ([bdring/FluidNC#1875](https://github.com/bdring/FluidNC/pull/1875)) is merged but not yet in a FluidNC release. Until then, USB CDC needs a FluidNC build from its main branch.
+
+**FluidTouch settings:**
+- **Baud Rate:** Must match FluidNC's `usb_host: baud:` setting (default `115200`, the same as FluidNC's own default). FluidNC uses it to set the display's USB serial chip, so a mismatch means no communication, even though it's a USB connection.
+  - **`500000` is recommended** for faster uploads (about 32 KB/s in testing, versus at most about 11 KB/s at 115200). Set it on both sides.
+  - Higher rates such as 1000000 lose data between the display and FluidNC, so uploads slow down or fail.
+
+**FluidNC configuration:**
+
+```yaml
+uart3:
+  usb_host:
+    baud: 500000
+
+uart_channel3:
+  uart_num: 3
+  report_interval_ms: 0
+```
+
+**Notes:**
+- `report_interval_ms` can be `0`: FluidTouch turns on status reports itself. A non-zero value also works, and makes FluidNC repeat its startup message until the display answers, which helps FluidTouch re-sync after FluidNC restarts.
+- Files on the display's SD card can be uploaded to FluidNC's SD card or flash over XModem. The destination folder must already exist; FluidNC can't create folders over this connection, so create the default `/fluidtouch/uploads/` folder once from FluidNC's WebUI.
+- Turning on **Load this machine at startup** is recommended, so the display connects as soon as it's powered.
+- If FluidNC stops answering (cable unplugged, FluidNC restarted), FluidTouch shows OFFLINE within about 35 seconds and reconnects by itself when FluidNC answers again. To reconnect at once, tap the machine name in the status bar and choose **Reconnect**.
 
 ---
 
@@ -204,7 +294,7 @@ Creates a backup file on the Display SD card:
 - Version: 1.0
 
 **Exported Data:**
-- Machine configurations (name, connection type, hostname/IP, port, SSID)
+- Machine configurations (name, connection type, hostname/IP, port, SSID, baud rate, axis configuration)
 - Jog settings (XY feed rate, Z feed rate)
 - Probe settings (feed rate, max distance, retract distance, thickness)
 - Macros (up to 9 per machine)
@@ -215,6 +305,7 @@ Creates a backup file on the Display SD card:
 - WiFi passwords are NOT included in the export
 - Empty password fields are exported instead
 - You must manually re-enter WiFi passwords after importing
+- ESP-NOW pairings are NOT included either, because they hold the key for the link to FluidNC. Imported ESP-NOW machines show "Not paired" until you pair them again.
 
 ### Importing Settings
 
