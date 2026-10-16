@@ -37,7 +37,9 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
 - MODAL list in the right column removed; the WCS (G54) button stays
 - Right column: three jog dials X / Y / Z (axis letter on the knob), step
   button above them cycles 0.1 / 1 / 10. Hand-wheel behaviour: 12 detents per
-  turn, clockwise = +. Detents are batched into one `$J=G91` every 100 ms,
+  turn, clockwise = + for X/Y but − for Z (torch down towards the material;
+  Z0 is on the material, ~40 at the top). Detents are batched into one
+  `$J=G91` every 100 ms,
   max 20 per jog, nothing collected unless Idle/Jog. Feed from Jog settings
 - Bottom row next to a narrower message box: **Zero X Y** (`G10 L20 P0 X0 Y0`,
   locked-WCS confirmation like the Control tab), **X0 Y0** (`G90 G0 X0 Y0`,

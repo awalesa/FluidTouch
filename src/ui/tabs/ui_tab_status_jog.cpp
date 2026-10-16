@@ -198,6 +198,9 @@ void UITabStatusJog::onSendTimer(lv_timer_t *) {
 
         int feed = (d.axis == 'Z') ? UITabSettingsJog::getDefaultZFeed()
                                    : UITabSettingsJog::getDefaultXYFeed();
+        // Z: clockwise lowers the torch towards the material (Z0), like a hand-wheel
+        // screwing down; X and Y: clockwise = +
+        if (d.axis == 'Z') detents = -detents;
         char cmd[48];
         snprintf(cmd, sizeof(cmd), "$J=G91 %c%.3f F%d\n", d.axis, detents * currentStep(), feed);
         Serial.printf("[StatusJog] %s", cmd);
