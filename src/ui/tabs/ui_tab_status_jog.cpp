@@ -12,7 +12,7 @@
 UITabStatusJog::Dial UITabStatusJog::dials[UITabStatusJog::MAX_DIALS] = {};
 int UITabStatusJog::dial_count = 0;
 int UITabStatusJog::step_index_xy = 1;  // 1 by default
-int UITabStatusJog::step_index_z = 0;   // 0.1 by default
+int UITabStatusJog::step_index_z = 1;   // 0.5 by default
 lv_obj_t *UITabStatusJog::lbl_step_xy = nullptr;
 lv_obj_t *UITabStatusJog::lbl_step_z = nullptr;
 lv_timer_t *UITabStatusJog::send_timer = nullptr;
@@ -112,7 +112,10 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
         d.tracking = false;
         d.accum = 0;
         d.knob_angle = -90.0f;  // marker starts at 12 o'clock
-        d.pending = 0;
+        d.pending_mm = 0;
+        d.busy_until = 0;
+        d.last_send = 0;
+        d.speed = 0;
 
         // The whole cell takes the touch, so the finger can circle the knob
         // at any radius without slipping off it
@@ -210,32 +213,83 @@ void UITabStatusJog::onDialEvent(lv_event_t *e) {
     d.last_angle = angle;
     if (!jogAllowed()) return;  // don't let the dial "wind up" while the machine can't jog
 
+    // Motion follows the finger continuously; the gear comes from how far the
+    // finger is from the centre, relative to the knob's rim
+    float knob_r = lv_obj_get_width(d.knob) / 2.0f;
+    float gear = sqrtf(dx * dx + dy * dy) / knob_r;
+    if (gear < GEAR_MIN) gear = GEAR_MIN;
+    if (gear > GEAR_MAX) gear = GEAR_MAX;
+    d.pending_mm += delta / DETENT_DEG * currentStep(d.axis) * gear;
+
+    // The marker and letter still click round a detent at a time
     d.accum += delta;
-    while (d.accum >= DETENT_DEG) { d.accum -= DETENT_DEG; d.pending++; d.knob_angle += DETENT_DEG; }
-    while (d.accum <= -DETENT_DEG) { d.accum += DETENT_DEG; d.pending--; d.knob_angle -= DETENT_DEG; }
-    placeMarker(d);
+    bool moved = false;
+    while (d.accum >= DETENT_DEG) { d.accum -= DETENT_DEG; d.knob_angle += DETENT_DEG; moved = true; }
+    while (d.accum <= -DETENT_DEG) { d.accum += DETENT_DEG; d.knob_angle -= DETENT_DEG; moved = true; }
+    if (moved) placeMarker(d);
 }
 
 void UITabStatusJog::onSendTimer(lv_timer_t *) {
+    uint32_t now = millis();
     for (int i = 0; i < dial_count; i++) {
         Dial &d = dials[i];
-        if (d.pending == 0) continue;
-        int detents = d.pending;
-        d.pending = 0;
+        if (fabsf(d.pending_mm) < MIN_SEND_MM) continue;  // keep collecting
+        float mm = d.pending_mm;
+        d.pending_mm = 0;
         if (!jogAllowed()) continue;
-        // Cap one burst so a wild spin can't queue a long move
-        if (detents > MAX_DETENTS_PER_SEND) detents = MAX_DETENTS_PER_SEND;
-        if (detents < -MAX_DETENTS_PER_SEND) detents = -MAX_DETENTS_PER_SEND;
 
-        int feed = (d.axis == 'Z') ? UITabSettingsJog::getDefaultZFeed()
-                                   : UITabSettingsJog::getDefaultXYFeed();
         // Clockwise = + for X; - for Y (owner's preference) and for Z, where it
         // lowers the torch towards the material (Z0), like a hand-wheel screwing down
-        if (d.axis == 'Y' || d.axis == 'Z') detents = -detents;
+        if (d.axis == 'Y' || d.axis == 'Z') mm = -mm;
+
+        const int max_feed = (d.axis == 'Z') ? UITabSettingsJog::getMaxZFeed()
+                                             : UITabSettingsJog::getMaxXYFeed();
+        int32_t lag = (int32_t)(d.busy_until - now);
+        if (lag < 0) lag = 0;
+
+        // How fast the dial turns: this motion over the time since the previous
+        // jog, smoothed so the feed doesn't jump from jog to jog
+        int32_t gap = (int32_t)(now - d.last_send);
+        if (gap < SEND_INTERVAL_MS) gap = SEND_INTERVAL_MS;
+        // First jog after a pause: the motion was collected over about one
+        // interval, not since the last jog, or the start would crawl
+        if (gap > MAX_GAP_MS) gap = (lag == 0) ? SEND_INTERVAL_MS : MAX_GAP_MS;
+        float speed = fabsf(mm) * 1000.0f / gap;
+        d.speed = (lag == 0) ? speed : 0.6f * d.speed + 0.4f * speed;
+
+        // Nudge the feed so the motion queued in FluidNC settles at
+        // TARGET_LAG_MS: the next jog arrives while this one still runs and
+        // the planner blends them into one move instead of stop-start
+        float correction = 1.0f + (float)(lag - TARGET_LAG_MS) / (2.0f * TARGET_LAG_MS);
+        if (correction < 0.7f) correction = 0.7f;
+        if (correction > 1.5f) correction = 1.5f;
+        float feed = d.speed * 60.0f * correction;
+        if (feed > max_feed) feed = max_feed;
+        if (feed < MIN_FEED) feed = MIN_FEED;
+
+        // Never queue more than MAX_LAG_MS; turning faster than the axis can
+        // follow is dropped, like a real hand-wheel
+        float fit_mm = (MAX_LAG_MS - lag) * feed / 60000.0f;
+        float send_mm = fabsf(mm) < fit_mm ? fabsf(mm) : fit_mm;
+        if (send_mm < fabsf(mm)) {
+            Serial.printf("[StatusJog] %c: %.3f mm dropped, %d ms queued\n", d.axis, fabsf(mm) - send_mm, (int)lag);
+        }
+        // Whole microns only; the rounding remainder goes with the next jog
+        send_mm = roundf(send_mm * 1000.0f) / 1000.0f;
+        if (send_mm < 0.001f) continue;
+        float dist = mm < 0 ? -send_mm : send_mm;
+        if (fabsf(mm) <= fit_mm) {
+            float rest = mm - dist;
+            d.pending_mm += (d.axis == 'Y' || d.axis == 'Z') ? -rest : rest;  // back in dial terms
+        }
+
         char cmd[48];
-        snprintf(cmd, sizeof(cmd), "$J=G91 %c%.3f F%d\n", d.axis, detents * currentStep(d.axis), feed);
+        snprintf(cmd, sizeof(cmd), "$J=G91 %c%.3f F%.0f\n", d.axis, dist, feed);
         Serial.printf("[StatusJog] %s", cmd);
         FluidNCClient::sendCommand(cmd);
+        float t_ms = send_mm * 60000.0f / feed;
+        d.busy_until = now + lag + (uint32_t)t_ms + (lag == 0 ? START_ALLOWANCE_MS : 0);
+        d.last_send = now;
     }
 }
 

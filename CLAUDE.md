@@ -37,12 +37,20 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
 - MODAL list in the right column removed; the WCS (G54) button stays
 - Right column: three jog dials X / Y / Z (axis letter on the knob), two step
   buttons above them: XY cycles 0.1 / 1 / 10 (default 1), Z cycles
-  0.1 / 0.5 / 1 (default 0.1). Hand-wheel behaviour: 12 detents per
+  0.1 / 0.5 / 1 (default 0.5). Hand-wheel behaviour: 12 detents per
   turn, clockwise = + for X, − for Y (owner's preference) and − for Z (torch
   down towards the material; Z0 is on the material, ~40 at the top). The
-  axis letter turns with the knob. Detents are batched into one
-  `$J=G91` every 100 ms,
-  max 20 per jog, nothing collected unless Idle/Jog. Feed from Jog settings
+  axis letter turns with the knob (it and the marker click round per
+  detent, but the motion is continuous: step per 30 degrees, fractions
+  included). Finger distance from the centre gears it: x1 on the knob rim,
+  down to x0.4 near the centre, up to x2 well outside the knob. Motion is
+  sent as one `$J=G91` every 50 ms, nothing collected unless Idle/Jog.
+  MPG-style smoothing: the jog feed follows how fast the dial turns
+  (smoothed, capped at the Jog settings max feed) and is nudged so ~150 ms of
+  motion stays queued in FluidNC, so jogs blend instead of stop-start; never
+  more than 350 ms queued, so the axis stops/reverses quickly; turning faster
+  than that is dropped. Tunables in `ui_tab_status_jog.h` (TARGET_LAG_MS,
+  MAX_LAG_MS, MAX_GAP_MS, GEAR_MIN/MAX)
 - Layout below the state row: three columns. Left: positions, message box
   under them (440 wide). Middle (x 455, where FEED RATE / RAPID / SPINDLE
   was; removed): four stacked action buttons in workflow order,
@@ -53,6 +61,14 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   Right: the dials
 - Code: `src/ui/tabs/ui_tab_status_jog.cpp` + `include/ui/tabs/ui_tab_status_jog.h`;
   `ui_tab_status.cpp` only calls into it (kept small to ease upstream merges)
+
+Bottom status bar (also on `my-ui`): on the Status tab it shows feed
+(mm/min), overrides (F / R / S %) and spindle RPM instead of the state and
+WPos/MPos the tab already shows; other tabs unchanged, job progress still
+takes priority. `UICommon::refreshStatusBarMode()` picks the mode (called on
+tab change and from `updateFileProgress`), `UICommon::updateFeedSpindle()`
+is fed from `main.cpp`. Also fixed upstream's shadowed `lbl_wpos_label`
+local, which kept "WPos:" visible over the job progress.
 
 Files tab (also on `my-ui`): FluidNC SD / Flash lists come from
 `$SD/ListJSON` / `$LocalFS/ListJSON` instead of `$Files/ListGcode`, which

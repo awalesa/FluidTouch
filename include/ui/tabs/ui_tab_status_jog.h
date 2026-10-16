@@ -6,9 +6,16 @@
 // Status tab additions: one jog dial per axis (X/Y/Z) plus a column of
 // action buttons: home ($H), zero work X Y, go to work X0 Y0, probe Z.
 //
-// Each dial works like a hand-wheel (MPG): turning it by one detent moves
-// the axis by the selected step. Detents are collected and sent as one
-// $J=G91 jog every SEND_INTERVAL_MS, so a fast spin can't flood FluidNC.
+// Each dial works like a hand-wheel (MPG): turning it by one detent (30
+// degrees) moves the axis by the selected step, continuously in between, so
+// the axis follows the finger rather than jumping a step at a time. The
+// finger's distance from the centre gears it: on the knob rim x1, closer in
+// finer (down to x0.4), outside the knob coarser (up to x2).
+// The motion is sent as one $J=G91 jog every SEND_INTERVAL_MS. The feed of
+// each jog is matched to how fast the dial turns, so consecutive jogs blend
+// into one smooth move, and the motion queued in FluidNC is kept short
+// (MAX_LAG_MS) so the axis stops or reverses soon after the dial does;
+// turning faster than that is dropped.
 class UITabStatusJog {
 public:
     // Dials, stacked vertically, with XY and Z step selectors on top.
@@ -28,13 +35,23 @@ private:
         bool tracking;        // finger is far enough from the centre to read an angle
         float accum;          // rotation not yet turned into a detent (degrees)
         float knob_angle;     // drawn rotation of the marker (degrees)
-        int pending;          // detents waiting to be sent (+ = clockwise)
+        float pending_mm;     // motion waiting to be sent (+ = clockwise)
+        uint32_t busy_until;  // estimated millis() when the jogs sent so far finish
+        uint32_t last_send;   // millis() of the previous jog
+        float speed;          // smoothed dial speed (mm/s)
     };
 
     static constexpr int MAX_DIALS = 3;
     static constexpr float DETENT_DEG = 30.0f;    // 12 detents per turn
-    static constexpr int SEND_INTERVAL_MS = 100;
-    static constexpr int MAX_DETENTS_PER_SEND = 20;
+    static constexpr int SEND_INTERVAL_MS = 50;
+    static constexpr int TARGET_LAG_MS = 150;  // motion kept queued so the planner never runs dry
+    static constexpr int MAX_GAP_MS = 250;     // slowest turning rate followed smoothly
+    static constexpr int MAX_LAG_MS = 350;     // never queue more than this
+    static constexpr float MIN_SEND_MM = 0.005f;   // smaller motion waits for more
+    static constexpr float GEAR_MIN = 0.4f;    // finger near the centre
+    static constexpr float GEAR_MAX = 2.0f;    // finger well outside the knob
+    static constexpr int START_ALLOWANCE_MS = 50;  // acceleration from rest
+    static constexpr int MIN_FEED = 30;        // mm/min
 
     static Dial dials[MAX_DIALS];
     static int dial_count;
