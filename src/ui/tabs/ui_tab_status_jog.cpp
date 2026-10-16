@@ -140,13 +140,15 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
         // Highlight the rim while the dial is being turned
         lv_obj_set_style_border_color(d.knob, lv_color_white(), LV_STATE_PRESSED);
 
-        // Axis letter in the middle of the knob
-        lv_obj_t *lbl_axis = lv_label_create(d.knob);
+        // Axis letter in the middle of the knob, rotating about its own centre
+        d.label = lv_label_create(d.knob);
         char axis_txt[2] = {d.axis, 0};
-        lv_label_set_text(lbl_axis, axis_txt);
-        lv_obj_set_style_text_font(lbl_axis, &lv_font_montserrat_32, 0);
-        lv_obj_set_style_text_color(lbl_axis, axisColor(d.axis), 0);
-        lv_obj_center(lbl_axis);
+        lv_label_set_text(d.label, axis_txt);
+        lv_obj_set_style_text_font(d.label, &lv_font_montserrat_32, 0);
+        lv_obj_set_style_text_color(d.label, axisColor(d.axis), 0);
+        lv_obj_set_style_transform_pivot_x(d.label, lv_pct(50), 0);
+        lv_obj_set_style_transform_pivot_y(d.label, lv_pct(50), 0);
+        lv_obj_center(d.label);
 
         // Finger-grip dot that turns with the dial
         d.marker = lv_obj_create(d.knob);
@@ -166,6 +168,9 @@ void UITabStatusJog::placeMarker(Dial &d) {
     int r = d.marker_radius;
     float rad = d.knob_angle * (float)M_PI / 180.0f;
     lv_obj_align(d.marker, LV_ALIGN_CENTER, (int)lroundf(cosf(rad) * r), (int)lroundf(sinf(rad) * r));
+    // Letter upright when the marker is at 12 o'clock (knob_angle -90); 0.1 degree units
+    int deg = ((int)lroundf(d.knob_angle + 90.0f) % 360 + 360) % 360;
+    lv_obj_set_style_transform_rotation(d.label, deg * 10, 0);
 }
 
 void UITabStatusJog::onDialEvent(lv_event_t *e) {
@@ -223,9 +228,9 @@ void UITabStatusJog::onSendTimer(lv_timer_t *) {
 
         int feed = (d.axis == 'Z') ? UITabSettingsJog::getDefaultZFeed()
                                    : UITabSettingsJog::getDefaultXYFeed();
-        // Z: clockwise lowers the torch towards the material (Z0), like a hand-wheel
-        // screwing down; X and Y: clockwise = +
-        if (d.axis == 'Z') detents = -detents;
+        // Clockwise = + for X; - for Y (owner's preference) and for Z, where it
+        // lowers the torch towards the material (Z0), like a hand-wheel screwing down
+        if (d.axis == 'Y' || d.axis == 'Z') detents = -detents;
         char cmd[48];
         snprintf(cmd, sizeof(cmd), "$J=G91 %c%.3f F%d\n", d.axis, detents * currentStep(d.axis), feed);
         Serial.printf("[StatusJog] %s", cmd);

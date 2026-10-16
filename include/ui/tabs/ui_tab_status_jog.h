@@ -21,6 +21,7 @@ private:
         char axis;            // 'X', 'Y' or 'Z'
         lv_obj_t *knob;       // round knob
         lv_obj_t *marker;     // dot on the knob rim showing rotation
+        lv_obj_t *label;      // axis letter, turns with the knob
         int marker_radius;    // distance of the marker from the knob centre (px)
         float last_angle;     // finger angle at the previous event (degrees)
         bool tracking;        // finger is far enough from the centre to read an angle
