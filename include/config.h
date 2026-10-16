@@ -43,7 +43,7 @@
 #define BUFFER_LINES 480  // Full screen buffer for smooth rendering (with 8MB PSRAM available)
 
 // Timing constants
-#define SPLASH_DURATION_MS 2500
+#define SPLASH_DURATION_MS 800
 #define LIMIT_SWITCH_HOLD_MS 500  // Duration to keep limit switch indicators visible after trigger clears
 
 // Preferences namespaces

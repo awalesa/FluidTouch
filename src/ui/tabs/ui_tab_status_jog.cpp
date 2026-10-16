@@ -229,8 +229,8 @@ void UITabStatusJog::createQuickButtons(lv_obj_t *tab, int x, int y, int w, int 
         lv_event_cb_t cb;
     } specs[count] = {
         // Colours and icons follow the Control > Actions tab ("Zero All", "Home All")
-        {LV_SYMBOL_GPS " Zero\nX Y", UITheme::AXIS_XY, onZeroXYClicked},
-        {LV_SYMBOL_PLAY " Go\nX0 Y0", UITheme::AXIS_XY, onGoToWorkZeroClicked},
+        {LV_SYMBOL_GPS " Zero\nWork XY", UITheme::AXIS_XY, onZeroXYClicked},
+        {LV_SYMBOL_PLAY " Work\nX0 Y0", UITheme::AXIS_XY, onGoToWorkZeroClicked},
         {LV_SYMBOL_HOME " Home\nAll", UITheme::AXIS_XY, onHomeClicked},
     };
     for (int i = 0; i < count; i++) {
