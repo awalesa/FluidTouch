@@ -317,10 +317,13 @@ void UITabStatusJog::createActionButtons(lv_obj_t *tab, int x, int y, int w, int
         lv_event_cb_t cb;
     } specs[count] = {
         // In the order they're used: home, set work zero, return to it, touch off Z.
-        // Colours and icons follow the Control tab ("Home All", "Zero All", Probe "Z-")
-        {LV_SYMBOL_HOME " Home\nAll", UITheme::AXIS_XY, onHomeClicked},
+        // A different colour each so they can't be mixed up, none of them the
+        // X/Y axis blue/green or the red/yellow of Stop/Pause: grey for homing,
+        // teal for zeroing (Control > "Zero All"), amber for the rapid move,
+        // purple for Z probing (Probe "Z-")
+        {LV_SYMBOL_HOME " Home\nAll", LV_COLOR_MAKE(0x55, 0x55, 0x55), onHomeClicked},
         {LV_SYMBOL_GPS " Zero\nWork XY", UITheme::AXIS_XY, onZeroXYClicked},
-        {LV_SYMBOL_PLAY " Work\nX0 Y0", UITheme::AXIS_XY, onGoToWorkZeroClicked},
+        {LV_SYMBOL_PLAY " Work\nX0 Y0", LV_COLOR_MAKE(0xC7, 0x6A, 0x00), onGoToWorkZeroClicked},
         {LV_SYMBOL_DOWN " Probe\nZ", UITheme::AXIS_Z, onProbeClicked},
     };
     for (int i = 0; i < count; i++) {
