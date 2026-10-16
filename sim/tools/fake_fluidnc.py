@@ -98,14 +98,25 @@ def make_frame(payload: bytes, opcode=0x2):
 
 
 SAMPLE_FILES = {"/sd/": [("projects", -1), ("facing.nc", 18432), ("sign_v2.gcode", 254871)],
-                "/sd/projects/": [("bracket.nc", 9811), ("drawer_front.nc", 120334)]}
+                "/sd/projects/": [("bracket.nc", 9811), ("drawer_front.nc", 120334)],
+                "/localfs/": [("config.yaml", 4210), ("index.html.gz", 118734), ("probe.nc", 312)]}
+
+# Extensions FluidNC's $Files/ListGcode shows (Channel::is_visible)
+GCODE_EXTENSIONS = {".g", ".gc", ".gco", ".gcode", ".nc", ".ngc", ".ncc", ".txt", ".cnc", ".tap"}
+
+
+def is_listed_gcode(entry):
+    name = entry["name"]
+    if name.startswith(".") or name == "System Volume Information":
+        return False
+    return entry["size"] == "-1" or os.path.splitext(name)[1].lower() in GCODE_EXTENSIONS
 
 
 def list_files(sd_root, path):
     """-> (files list of {"name","size"}, error or None) for $Files/ListGcode."""
     if not path.endswith("/"):
         path += "/"
-    if sd_root is None:
+    if sd_root is None or path.startswith("/localfs/"):
         entries = SAMPLE_FILES.get(path)
         if entries is None:
             return [], "Not a directory"
@@ -240,8 +251,24 @@ class Session:
         elif up.startswith("$FILES/LISTGCODE"):
             path = line.split("=", 1)[1].strip() if "=" in line else "/sd/"
             files, error = list_files(self.sd_root, path or "/sd/")
+            files = [f for f in files if is_listed_gcode(f)]
             reply = {"error": error} if error else {"files": files, "path": path}
             self.send("[JSON:" + json.dumps(reply, separators=(",", ":")) + "]")
+            self.send("ok")
+        elif up.startswith("$SD/LISTJSON") or up.startswith("$LOCALFS/LISTJSON"):
+            # Every file, as raw (not [JSON:]-wrapped) JSON split over lines like
+            # FluidNC's JSONencoder; a bad folder is an error line, not JSON
+            default = "/localfs/" if up.startswith("$LOCALFS") else "/sd/"
+            path = (line.split("=", 1)[1].strip() if "=" in line else "") or default
+            files, error = list_files(self.sd_root, path)
+            if error:
+                self.send(f"[MSG:ERR: {error}]")
+                self.send("error:60")
+                return
+            self.send('{"files":[')
+            for n, f in enumerate(files):
+                self.send(" " + json.dumps(f, separators=(",", ":")) + ("," if n < len(files) - 1 else ""))
+            self.send(f'],"path":{json.dumps(path)},"total":"7.40 GB","used":"1.02 MB","occupation":0}}')
             self.send("ok")
         elif up.startswith("$SIM/ALARM="):
             m.state = "Alarm"
