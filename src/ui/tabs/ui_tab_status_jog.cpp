@@ -49,17 +49,11 @@ bool UITabStatusJog::jogAllowed() {
 // Dials
 // ---------------------------------------------------------------------------
 void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
-    // Header row: "JOG" title and the step selector
-    lv_obj_t *header = lv_label_create(tab);
-    lv_label_set_text(header, "JOG");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(header, UITheme::TEXT_DISABLED, 0);
-    lv_obj_set_pos(header, x, y + 4);
-
-    const int step_w = 110, step_h = 28;
+    // Step selector across the top of the column
+    const int step_h = 28;
     lv_obj_t *btn_step = lv_button_create(tab);
-    lv_obj_set_size(btn_step, step_w, step_h);
-    lv_obj_set_pos(btn_step, x + w - step_w, y);
+    lv_obj_set_size(btn_step, w, step_h);
+    lv_obj_set_pos(btn_step, x, y);
     lv_obj_set_style_bg_color(btn_step, UITheme::BG_BUTTON, LV_PART_MAIN);
     lv_obj_set_style_pad_all(btn_step, 0, 0);
     lv_obj_set_ext_click_area(btn_step, 8);
@@ -231,9 +225,10 @@ void UITabStatusJog::createQuickButtons(lv_obj_t *tab, int x, int y, int w, int 
         lv_color_t color;
         lv_event_cb_t cb;
     } specs[count] = {
-        {"Zero\nX Y", UITheme::AXIS_XY, onZeroXYClicked},
-        {LV_SYMBOL_GPS "\nX0 Y0", UITheme::BTN_CONNECT, onGoToWorkZeroClicked},
-        {LV_SYMBOL_HOME "\nHome", UITheme::ACCENT_SECONDARY, onHomeClicked},
+        // Colours and icons follow the Control > Actions tab ("Zero All", "Home All")
+        {LV_SYMBOL_GPS " Zero\nX Y", UITheme::AXIS_XY, onZeroXYClicked},
+        {LV_SYMBOL_PLAY " Go\nX0 Y0", UITheme::AXIS_XY, onGoToWorkZeroClicked},
+        {LV_SYMBOL_HOME " Home\nAll", UITheme::AXIS_XY, onHomeClicked},
     };
     for (int i = 0; i < count; i++) {
         lv_obj_t *btn = lv_button_create(tab);
