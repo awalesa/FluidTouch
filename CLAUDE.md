@@ -30,7 +30,7 @@ SSID/password. `--script` drives touch input and takes screenshots (see
 What the `macos-sim` branch changed: `sim/build.sh`, Homebrew SDL2 lookup in
 `sim/CMakeLists.txt`, SIGPIPE ignored and exe path via `_NSGetExecutablePath`
 in `sim/src/sim_main.cpp`, quoting of the force-included header path (the
-checkout lives under a path with spaces: `.../Plasma CNC/...`).
+checkout used to live under a path with spaces, `.../Plasma CNC/...`).
 
 ## UI changes on `my-ui` (Status tab)
 
@@ -78,8 +78,12 @@ Known issue: the owner's default Python is 3.15 from python.org, which lacks
 `rm -rf ~/.platformio/penv`, and in VS Code settings
 `"platformio-ide.customPATH": "/opt/homebrew/opt/python@3.12/libexec/bin"`.
 
-The `my-ui` firmware has **not yet been built for ESP32** (only the simulator).
-The first PlatformIO build is the first real compile check.
+The project path must not contain spaces: ESP-IDF stops with "Detected a
+whitespace character in project paths" (a symlink doesn't help, PlatformIO
+resolves the real path). The checkout is now at `.../dom/Plasma_CNC/...`.
+
+`my-ui` builds cleanly for `elecrow-crowpanel-7-advance-v13` (first build
+~6 min, flash 33.5%); warnings come only from ESP-IDF managed components.
 
 Alternative: GitHub Actions "Build Branch Preview" (run manually on `my-ui`)
 publishes to the fork's web installer at https://awalesa.github.io/FluidTouch/
