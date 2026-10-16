@@ -42,8 +42,9 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   down towards the material; Z0 is on the material, ~40 at the top). The
   axis letter turns with the knob (it and the marker click round per
   detent, but the motion is continuous: step per 30 degrees, fractions
-  included). Finger distance from the centre gears it: x1 on the knob rim,
-  down to x0.4 near the centre, up to x2 well outside the knob. Motion is
+  included). Finger distance from the centre gears it: x1 anywhere on the
+  knob, up to x2 well outside it (a x0.4 zone near the centre was tried and
+  dropped: too close to the centre to turn reliably). Motion is
   sent as one `$J=G91` every 50 ms, nothing collected unless Idle/Jog.
   MPG-style smoothing: the jog feed follows how fast the dial turns
   (smoothed, capped at the Jog settings max feed) and is nudged so ~150 ms of

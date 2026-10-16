@@ -9,8 +9,9 @@
 // Each dial works like a hand-wheel (MPG): turning it by one detent (30
 // degrees) moves the axis by the selected step, continuously in between, so
 // the axis follows the finger rather than jumping a step at a time. The
-// finger's distance from the centre gears it: on the knob rim x1, closer in
-// finer (down to x0.4), outside the knob coarser (up to x2).
+// finger's distance from the centre gears it: anywhere on the knob x1,
+// outside the knob coarser (up to x2). (A finer zone near the centre was
+// dropped: too close to the centre the angle is too jumpy to turn.)
 // The motion is sent as one $J=G91 jog every SEND_INTERVAL_MS. The feed of
 // each jog is matched to how fast the dial turns, so consecutive jogs blend
 // into one smooth move, and the motion queued in FluidNC is kept short
@@ -48,7 +49,7 @@ private:
     static constexpr int MAX_GAP_MS = 250;     // slowest turning rate followed smoothly
     static constexpr int MAX_LAG_MS = 350;     // never queue more than this
     static constexpr float MIN_SEND_MM = 0.005f;   // smaller motion waits for more
-    static constexpr float GEAR_MIN = 0.4f;    // finger near the centre
+    static constexpr float GEAR_MIN = 1.0f;    // finger on the knob
     static constexpr float GEAR_MAX = 2.0f;    // finger well outside the knob
     static constexpr int START_ALLOWANCE_MS = 50;  // acceleration from rest
     static constexpr int MIN_FEED = 30;        // mm/min
