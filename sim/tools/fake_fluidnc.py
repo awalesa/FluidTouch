@@ -54,7 +54,7 @@ class Machine:
         self.busy_until = 0.0
 
     def tick(self):
-        if self.state in ("Jog", "Home") and time.monotonic() >= self.busy_until:
+        if self.state in ("Jog", "Home", "Run") and time.monotonic() >= self.busy_until:
             self.state = "Idle"
 
     def status(self):
@@ -221,6 +221,21 @@ class Session:
             for axis, value in re.findall(r"([XYZA])(-?[\d.]+)", up):
                 i = AXES.index(axis)
                 m.wco[i] = m.mpos[i] - float(value)
+            self.send("ok")
+        elif re.search(r"G0*[01](?!\d)", up) and re.search(r"[XYZA]-?[\d.]", up):
+            # G0/G1 move: G90 work coordinates by default, G91 relative, G53 machine
+            words = dict(re.findall(r"([XYZA])(-?[\d.]+)", up))
+            for axis, value in words.items():
+                i = AXES.index(axis)
+                v = float(value)
+                if "G91" in up:
+                    m.mpos[i] += v
+                elif "G53" in up:
+                    m.mpos[i] = v
+                else:
+                    m.mpos[i] = v + m.wco[i]
+            m.state = "Run"
+            m.busy_until = time.monotonic() + 1.0
             self.send("ok")
         elif up.startswith("$FILES/LISTGCODE"):
             path = line.split("=", 1)[1].strip() if "=" in line else "/sd/"
