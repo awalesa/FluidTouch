@@ -319,9 +319,12 @@ const char *pending_zero_axes = "";  // axes to zero once a locked-WCS dialog is
 } // namespace
 
 void UITabStatusJog::createActionButtons(lv_obj_t *tab, int x, int y, int w, int h) {
-    const int gap = 10;
+    const int gap = 8;
     const int rows = 4;
-    const int bh = (h - gap * (rows - 1)) / rows;
+    // Home All needs one line only, so its row is lower and the rows of
+    // half-width buttons get the rest
+    const int top_h = 48;
+    const int bh = (h - top_h - gap * (rows - 1)) / (rows - 1);
     const int half_w = (w - gap) / 2;
 
     struct Spec {
@@ -344,8 +347,9 @@ void UITabStatusJog::createActionButtons(lv_obj_t *tab, int x, int y, int w, int
     for (const Spec &sp : specs) {
         lv_obj_t *btn = lv_button_create(tab);
         bool full = sp.col < 0;
-        lv_obj_set_size(btn, full ? w : half_w, bh);
-        lv_obj_set_pos(btn, x + (full ? 0 : sp.col * (w - half_w)), y + sp.row * (bh + gap));
+        int row_y = y + (sp.row == 0 ? 0 : top_h + gap + (sp.row - 1) * (bh + gap));
+        lv_obj_set_size(btn, full ? w : half_w, sp.row == 0 ? top_h : bh);
+        lv_obj_set_pos(btn, x + (full ? 0 : sp.col * (w - half_w)), row_y);
         lv_obj_set_style_bg_color(btn, sp.color, LV_PART_MAIN);
         lv_obj_set_style_pad_all(btn, 2, 0);
         lv_obj_add_event_cb(btn, sp.cb, LV_EVENT_CLICKED, nullptr);

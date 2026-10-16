@@ -53,7 +53,7 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   than that is dropped. Tunables in `ui_tab_status_jog.h` (TARGET_LAG_MS,
   MAX_LAG_MS, MAX_GAP_MS, GEAR_MIN/MAX)
 - Layout below the state row: three columns. Left: positions, message box
-  under them (440 wide). Middle (x 455, where FEED RATE / RAPID / SPINDLE
+  under them (440 wide). Middle (x 452, 175 wide; where FEED RATE / RAPID / SPINDLE
   was; removed): action buttons in four rows, workflow order:
   **Home All** (`$H`, Idle or Alarm) across the column; **Zero XY**
   (`G10 L20 P0 X0 Y0`) | **Go XY0** (`G90 G0 X0 Y0`); **Zero Z**
@@ -64,8 +64,8 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   icon on top, short caption under it. Zeroing asks for confirmation on a locked WCS
   like the Control tab; moves and probe are Idle only. Colour = kind of
   action: grey machine (home, G53), teal zero, amber go to work zero,
-  purple probe.
-  Right: the dials
+  purple probe. Home All row 48 high, the half-width rows share the rest.
+  Right (x 637, 143 wide): the dials
 - Code: `src/ui/tabs/ui_tab_status_jog.cpp` + `include/ui/tabs/ui_tab_status_jog.h`;
   `ui_tab_status.cpp` only calls into it (kept small to ease upstream merges)
 
