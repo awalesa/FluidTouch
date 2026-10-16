@@ -505,15 +505,17 @@ void UITabStatus::create(lv_obj_t *tab) {
         visible_axis_rows++;
     }
 
-    // Right column (x=637): one jog dial per axis instead of the MODAL list.
+    // Right column: one jog dial per axis instead of the MODAL list, knobs
+    // centred between the action-button frame's border (x 619) and the right
+    // edge (780, like the WCS button), the touch area across the whole gap.
     // The lbl_modal_* pointers stay null; updateModalStates() skips them.
-    UITabStatusJog::createDials(tab, 637, 70, 143, 270);
+    UITabStatusJog::createDials(tab, 620, 70, 160, 270, 621, 159);
 
     // Middle column (x=452), in place of FEED RATE / RAPID / SPINDLE (not
     // needed on the plasma): home, zero work XY, work X0 Y0, probe Z, stacked
     // from the column headers down to the bottom like the dials beside them.
     // The lbl_feed_* / lbl_spindle_* pointers stay null; their updates skip them.
-    UITabStatusJog::createActionButtons(tab, 452, 70, 175, 270);
+    UITabStatusJog::createActionButtons(tab, 452, 70, 168, 270);
 
     // MESSAGE - under the positions, as wide as the two position columns.
     // Position depends on how many axis rows are shown (4 rows = XYZA leaves

@@ -35,14 +35,22 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
 ## UI changes on `my-ui` (Status tab)
 
 - MODAL list in the right column removed; the WCS (G54) button stays
-- Right column: three jog dials X / Y / Z (axis letter on the knob), two step
-  buttons above them: XY cycles 0.1 / 1 / 10 (default 1), Z cycles
-  0.1 / 0.5 / 1 (default 0.5). Hand-wheel behaviour: 12 detents per
+- Right column: three jog dials X / Y / Z (~82 px, each a full third of the
+  column height). The step is shown large (26 px) in the middle of each
+  knob; the axis letter, large (32 px) in the axis colour, stands to the
+  right of the knob. (Tried before: letter on the knob turning with it, which
+  looked off-centre; letter above the step.)
+  X and Y share one step (tapping either changes both); Z has its own. The knob's centre (45% of its
+  radius) is a button: a quick tap there (finger within 10 px, under 500 ms)
+  cycles the step: X and Y 0.1 / 1 / 10 (default 1), Z 0.1 / 0.5 / 1
+  (default 0.5). Turning only counts outside the centre, where the angle is
+  steady; a press that starts in the centre and moves out turns the dial.
+  (Before: separate XY / Z step buttons, first above the dials, then upright
+  beside them.) Hand-wheel behaviour: 12 detents per
   turn, clockwise = + for X, − for Y (owner's preference) and − for Z (torch
   down towards the material; Z0 is on the material, ~40 at the top). The
-  axis letter turns with the knob (it and the marker click round per
-  detent, but the motion is continuous: step per 30 degrees, fractions
-  included). Finger distance from the centre gears it: x1 anywhere on the
+  marker dot clicks round per detent, but the motion is continuous: step per
+  30 degrees, fractions included. Finger distance from the centre gears it: x1 anywhere on the
   knob, up to x2 well outside it (a x0.4 zone near the centre was tried and
   dropped: too close to the centre to turn reliably). Motion is
   sent as one `$J=G91` every 50 ms, nothing collected unless Idle/Jog.
@@ -53,7 +61,7 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   than that is dropped. Tunables in `ui_tab_status_jog.h` (TARGET_LAG_MS,
   MAX_LAG_MS, MAX_GAP_MS, GEAR_MIN/MAX)
 - Layout below the state row: three columns. Left: positions, message box
-  under them (440 wide). Middle (x 452, 175 wide; where FEED RATE / RAPID / SPINDLE
+  under them (440 wide). Middle (x 452, 168 wide; where FEED RATE / RAPID / SPINDLE
   was; removed): action buttons in four rows, workflow order:
   **Home All** (`$H`, Idle or Alarm) across the column; **Zero XY**
   (`G10 L20 P0 X0 Y0`) | **Go XY0** (`G90 G0 X0 Y0`); **Zero Z**
@@ -64,8 +72,18 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   icon on top, short caption under it. Zeroing asks for confirmation on a locked WCS
   like the Control tab; moves and probe are Idle only. Colour = kind of
   action: grey machine (home, G53), teal zero, amber go to work zero,
-  purple probe. Home All row 48 high, the half-width rows share the rest.
-  Right (x 637, 143 wide): the dials
+  purple probe. The zero / go-to-zero pairs sit in a yellow frame (like the
+  WCS button); the active WCS (G54...) sits on the frame's right border like
+  a dimension line: turned sideways (reads top to bottom), centred on the
+  line, with a gap cut in the border (a strip in the background colour, taken
+  from the first opaque ancestor). Refreshed every 250 ms. Middle column is
+  x 452-619; all the small buttons are the same size, Home All as wide as
+  the pairs, and every row and pair has the same 10 px gap; the frame's
+  top and bottom lines run through the middle of the gaps around the two
+  framed rows (measured: 4/5 px either side of the line). Label offset 1 px to centre the rotated capitals on the line.
+  Right (x 620-780): knobs centred between the frame's border (619) and the
+  right edge (780, like the WCS button), checked by measuring a screenshot
+  (39/39 px); each dial's touch area runs x 621-780
 - Code: `src/ui/tabs/ui_tab_status_jog.cpp` + `include/ui/tabs/ui_tab_status_jog.h`;
   `ui_tab_status.cpp` only calls into it (kept small to ease upstream merges)
 

@@ -12,11 +12,10 @@
 
 UITabStatusJog::Dial UITabStatusJog::dials[UITabStatusJog::MAX_DIALS] = {};
 int UITabStatusJog::dial_count = 0;
-int UITabStatusJog::step_index_xy = 1;  // 1 by default
-int UITabStatusJog::step_index_z = 1;   // 0.5 by default
-lv_obj_t *UITabStatusJog::lbl_step_xy = nullptr;
-lv_obj_t *UITabStatusJog::lbl_step_z = nullptr;
 lv_timer_t *UITabStatusJog::send_timer = nullptr;
+lv_obj_t *UITabStatusJog::lbl_wcs_frame = nullptr;
+lv_timer_t *UITabStatusJog::wcs_timer = nullptr;
+char UITabStatusJog::wcs_shown[8] = "";
 
 namespace {
 const float STEPS_XY[] = {0.1f, 1.0f, 10.0f};
@@ -28,8 +27,12 @@ const float STEPS_Z[] = {0.1f, 0.5f, 1.0f};
 const char *const STEP_LABELS_Z[] = {"0.1", "0.5", "1"};
 const int STEP_COUNT_Z = sizeof(STEPS_Z) / sizeof(STEPS_Z[0]);
 
-// Touches closer than this to the knob centre give a jumpy angle, so they're ignored
-const int MIN_RADIUS_PX = 10;
+// The knob's centre (this fraction of its radius) is a button: a tap there
+// changes the step. Turning only counts outside it, where the angle is steady
+const float CENTRE_FRACTION = 0.45f;
+// A tap: finger stays within this many px and lifts within this many ms
+const int TAP_SLOP_PX = 10;
+const uint32_t TAP_MAX_MS = 500;
 
 lv_color_t axisColor(char axis) {
     switch (axis) {
@@ -46,19 +49,20 @@ float wrap180(float deg) {
 }
 } // namespace
 
-float UITabStatusJog::currentStep(char axis) {
-    return axis == 'Z' ? STEPS_Z[step_index_z] : STEPS_XY[step_index_xy];
+// X and Y step through 0.1 / 1 / 10, Z through 0.1 / 0.5 / 1
+float UITabStatusJog::stepOf(const Dial &d) {
+    return d.axis == 'Z' ? STEPS_Z[d.step_index] : STEPS_XY[d.step_index];
 }
 
-void UITabStatusJog::updateStepLabels() {
-    char buf[24];
-    if (lbl_step_xy) {
-        snprintf(buf, sizeof(buf), "XY %s", STEP_LABELS_XY[step_index_xy]);
-        lv_label_set_text(lbl_step_xy, buf);
-    }
-    if (lbl_step_z) {
-        snprintf(buf, sizeof(buf), "Z %s", STEP_LABELS_Z[step_index_z]);
-        lv_label_set_text(lbl_step_z, buf);
+// X and Y share one step (changing either changes both); Z has its own
+void UITabStatusJog::cycleStep(Dial &d) {
+    bool z = d.axis == 'Z';
+    int next = (d.step_index + 1) % (z ? STEP_COUNT_Z : STEP_COUNT_XY);
+    for (int i = 0; i < dial_count; i++) {
+        Dial &o = dials[i];
+        if ((o.axis == 'Z') != z) continue;
+        o.step_index = next;
+        lv_label_set_text(o.step_label, z ? STEP_LABELS_Z[next] : STEP_LABELS_XY[next]);
     }
 }
 
@@ -71,28 +75,7 @@ bool UITabStatusJog::jogAllowed() {
 // ---------------------------------------------------------------------------
 // Dials
 // ---------------------------------------------------------------------------
-void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
-    // Step selectors across the top of the column: XY on the left, Z on the right
-    const int step_h = 28, step_gap = 6;
-    const int step_w = (w - step_gap) / 2;
-    lv_obj_t **labels[] = {&lbl_step_xy, &lbl_step_z};
-    lv_event_cb_t cbs[] = {onStepXYClicked, onStepZClicked};
-    for (int i = 0; i < 2; i++) {
-        lv_obj_t *btn = lv_button_create(tab);
-        lv_obj_set_size(btn, step_w, step_h);
-        lv_obj_set_pos(btn, x + i * (w - step_w), y);
-        lv_obj_set_style_bg_color(btn, UITheme::BG_BUTTON, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(btn, 0, 0);
-        lv_obj_set_ext_click_area(btn, 4);
-        lv_obj_add_event_cb(btn, cbs[i], LV_EVENT_CLICKED, nullptr);
-        lv_obj_t *lbl = lv_label_create(btn);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
-        lv_obj_set_style_text_color(lbl, i == 0 ? UITheme::AXIS_XY : UITheme::AXIS_Z, 0);
-        lv_obj_center(lbl);
-        *labels[i] = lbl;
-    }
-    updateStepLabels();
-
+void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h, int touch_x, int touch_w) {
     // One dial per enabled linear axis
     dial_count = 0;
     const char axes[] = {'X', 'Y', 'Z'};
@@ -104,9 +87,13 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
     }
     if (dial_count == 0) return;
 
-    const int top = y + step_h + 6;
-    const int cell_h = (h - (top - y)) / dial_count;
-    const int knob_d = cell_h - 8 < w ? cell_h - 8 : w;
+    // Each dial a full third of the column; knobs centred in x..x+w (x - 1 is
+    // the action-button frame's border, x + w the right edge)
+    const int top = y;
+    const int cell_h = h / dial_count;
+    const int knob_d = cell_h - 8 < w - 8 ? cell_h - 8 : w - 8;
+    // The touch cell around a knob can be wider than its part of the area
+    const int knob_left = x + w / 2 - knob_d / 2 - touch_x;
 
     for (int i = 0; i < dial_count; i++) {
         Dial &d = dials[i];
@@ -117,12 +104,13 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
         d.busy_until = 0;
         d.last_send = 0;
         d.speed = 0;
+        d.step_index = 1;  // X / Y 1 mm, Z 0.5 mm
 
         // The whole cell takes the touch, so the finger can circle the knob
         // at any radius without slipping off it
         lv_obj_t *cell = lv_obj_create(tab);
-        lv_obj_set_size(cell, w, cell_h);
-        lv_obj_set_pos(cell, x, top + i * cell_h);
+        lv_obj_set_size(cell, touch_w, cell_h);
+        lv_obj_set_pos(cell, touch_x, top + i * cell_h);
         lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(cell, 0, 0);
         lv_obj_set_style_pad_all(cell, 0, 0);
@@ -134,7 +122,7 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
 
         d.knob = lv_obj_create(cell);
         lv_obj_set_size(d.knob, knob_d, knob_d);
-        lv_obj_center(d.knob);
+        lv_obj_align(d.knob, LV_ALIGN_LEFT_MID, knob_left, 0);
         lv_obj_set_style_radius(d.knob, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_color(d.knob, UITheme::JOYSTICK_BG, 0);
         lv_obj_set_style_border_color(d.knob, axisColor(d.axis), 0);
@@ -145,15 +133,25 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
         // Highlight the rim while the dial is being turned
         lv_obj_set_style_border_color(d.knob, lv_color_white(), LV_STATE_PRESSED);
 
-        // Axis letter in the middle of the knob, rotating about its own centre
-        d.label = lv_label_create(d.knob);
+        // The step, large, in the middle of the knob (the tap target)
+        d.step_label = lv_label_create(d.knob);
+        lv_label_set_text(d.step_label, d.axis == 'Z' ? STEP_LABELS_Z[d.step_index] : STEP_LABELS_XY[d.step_index]);
+        lv_obj_set_style_text_font(d.step_label, &lv_font_montserrat_26, 0);
+        lv_obj_set_style_text_color(d.step_label, lv_color_lighten(axisColor(d.axis), LV_OPA_70), 0);
+        lv_obj_center(d.step_label);
+
+        // The axis letter, large and in the axis colour, to the right of the
+        // knob (centred between the knob and the right end of the touch cell)
+        const int letter_w = 32;
+        const int letter_cx = (knob_left + knob_d + touch_w) / 2;
+        d.label = lv_label_create(cell);
         char axis_txt[2] = {d.axis, 0};
         lv_label_set_text(d.label, axis_txt);
+        lv_obj_set_width(d.label, letter_w);
+        lv_obj_set_style_text_align(d.label, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_font(d.label, &lv_font_montserrat_32, 0);
         lv_obj_set_style_text_color(d.label, axisColor(d.axis), 0);
-        lv_obj_set_style_transform_pivot_x(d.label, lv_pct(50), 0);
-        lv_obj_set_style_transform_pivot_y(d.label, lv_pct(50), 0);
-        lv_obj_center(d.label);
+        lv_obj_align(d.label, LV_ALIGN_LEFT_MID, letter_cx - letter_w / 2, 0);
 
         // Finger-grip dot that turns with the dial
         d.marker = lv_obj_create(d.knob);
@@ -173,22 +171,12 @@ void UITabStatusJog::placeMarker(Dial &d) {
     int r = d.marker_radius;
     float rad = d.knob_angle * (float)M_PI / 180.0f;
     lv_obj_align(d.marker, LV_ALIGN_CENTER, (int)lroundf(cosf(rad) * r), (int)lroundf(sinf(rad) * r));
-    // Letter upright when the marker is at 12 o'clock (knob_angle -90); 0.1 degree units
-    int deg = ((int)lroundf(d.knob_angle + 90.0f) % 360 + 360) % 360;
-    lv_obj_set_style_transform_rotation(d.label, deg * 10, 0);
 }
 
 void UITabStatusJog::onDialEvent(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     Dial &d = *static_cast<Dial *>(lv_event_get_user_data(e));
-
-    if (code == LV_EVENT_RELEASED) {
-        d.tracking = false;
-        d.accum = 0;
-        lv_obj_remove_state(d.knob, LV_STATE_PRESSED);
-        return;
-    }
-    if (code != LV_EVENT_PRESSED && code != LV_EVENT_PRESSING) return;
+    if (code != LV_EVENT_PRESSED && code != LV_EVENT_PRESSING && code != LV_EVENT_RELEASED) return;
 
     lv_point_t p;
     lv_indev_get_point(lv_indev_active(), &p);
@@ -196,13 +184,34 @@ void UITabStatusJog::onDialEvent(lv_event_t *e) {
     lv_obj_get_coords(d.knob, &a);
     float dx = p.x - (a.x1 + a.x2) / 2.0f;
     float dy = p.y - (a.y1 + a.y2) / 2.0f;
+    float knob_r = lv_obj_get_width(d.knob) / 2.0f;
+    float centre_r = knob_r * CENTRE_FRACTION;
+    bool in_centre = dx * dx + dy * dy < centre_r * centre_r;
 
-    if (code == LV_EVENT_PRESSED) lv_obj_add_state(d.knob, LV_STATE_PRESSED);
+    if (code == LV_EVENT_PRESSED) {
+        lv_obj_add_state(d.knob, LV_STATE_PRESSED);
+        d.press_ms = millis();
+        d.press_x = p.x;
+        d.press_y = p.y;
+        d.tap = in_centre;  // stays a tap until the finger wanders or turns
+    } else if (abs(p.x - d.press_x) > TAP_SLOP_PX || abs(p.y - d.press_y) > TAP_SLOP_PX) {
+        d.tap = false;
+    }
 
-    if (dx * dx + dy * dy < MIN_RADIUS_PX * MIN_RADIUS_PX) {
-        d.tracking = false;  // too close to the centre; pick up again once outside
+    if (code == LV_EVENT_RELEASED) {
+        // A quick tap on the centre changes this dial's step
+        if (d.tap && in_centre && millis() - d.press_ms < TAP_MAX_MS) cycleStep(d);
+        d.tracking = false;
+        d.accum = 0;
+        lv_obj_remove_state(d.knob, LV_STATE_PRESSED);
         return;
     }
+
+    if (in_centre) {
+        d.tracking = false;  // the centre is the step button; turn from outside it
+        return;
+    }
+    d.tap = false;
     // Screen y grows downward, so a positive angle change is clockwise
     float angle = atan2f(dy, dx) * 180.0f / (float)M_PI;
     if (!d.tracking) {
@@ -216,13 +225,12 @@ void UITabStatusJog::onDialEvent(lv_event_t *e) {
 
     // Motion follows the finger continuously; the gear comes from how far the
     // finger is from the centre, relative to the knob's rim
-    float knob_r = lv_obj_get_width(d.knob) / 2.0f;
     float gear = sqrtf(dx * dx + dy * dy) / knob_r;
     if (gear < GEAR_MIN) gear = GEAR_MIN;
     if (gear > GEAR_MAX) gear = GEAR_MAX;
-    d.pending_mm += delta / DETENT_DEG * currentStep(d.axis) * gear;
+    d.pending_mm += delta / DETENT_DEG * stepOf(d) * gear;
 
-    // The marker and letter still click round a detent at a time
+    // The marker still clicks round a detent at a time
     d.accum += delta;
     bool moved = false;
     while (d.accum >= DETENT_DEG) { d.accum -= DETENT_DEG; d.knob_angle += DETENT_DEG; moved = true; }
@@ -294,16 +302,6 @@ void UITabStatusJog::onSendTimer(lv_timer_t *) {
     }
 }
 
-void UITabStatusJog::onStepXYClicked(lv_event_t *) {
-    step_index_xy = (step_index_xy + 1) % STEP_COUNT_XY;
-    updateStepLabels();
-}
-
-void UITabStatusJog::onStepZClicked(lv_event_t *) {
-    step_index_z = (step_index_z + 1) % STEP_COUNT_Z;
-    updateStepLabels();
-}
-
 // ---------------------------------------------------------------------------
 // Action buttons
 // ---------------------------------------------------------------------------
@@ -319,13 +317,66 @@ const char *pending_zero_axes = "";  // axes to zero once a locked-WCS dialog is
 } // namespace
 
 void UITabStatusJog::createActionButtons(lv_obj_t *tab, int x, int y, int w, int h) {
-    const int gap = 8;
-    const int rows = 4;
-    // Home All needs one line only, so its row is lower and the rows of
-    // half-width buttons get the rest
-    const int top_h = 48;
-    const int bh = (h - top_h - gap * (rows - 1)) / (rows - 1);
-    const int half_w = (w - gap) / 2;
+    // All buttons evenly spaced, the same gap between every row and between the
+    // two buttons of a pair; the frame's lines run through the middle of the
+    // gaps around the two framed rows
+    const int gap = 10;
+    const int top_h = 44;       // Home All: one line only, so a lower row
+    const int frame_pad_r = 9;  // right side: room for half the WCS label on the border
+    const int bh = (h - top_h - 3 * gap) / 3;
+    auto row_y = [&](int row) { return row == 0 ? y : y + top_h + gap + (row - 1) * (bh + gap); };
+    const int frame_y = row_y(1) - gap / 2 - 1;  // 1 px border, centred in the gap
+    const int frame_h = (row_y(2) + bh + gap / 2) - frame_y + 1;
+    const int inner_x = x + gap / 2 + 1;
+    const int inner_w = w - (gap / 2 + 1) - (frame_pad_r + 1);
+    const int inner_half_w = (inner_w - gap) / 2;
+
+    // Frame around the buttons that act on the current work coordinate system;
+    // drawn first so the buttons sit on top
+    lv_obj_t *frame = lv_obj_create(tab);
+    lv_obj_set_size(frame, w, frame_h);
+    lv_obj_set_pos(frame, x, frame_y);
+    lv_obj_set_style_bg_opa(frame, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(frame, 1, 0);
+    lv_obj_set_style_border_color(frame, UITheme::POS_MODAL, 0);  // yellow, like its label and the WCS button
+    lv_obj_set_style_radius(frame, 6, 0);
+    lv_obj_set_style_pad_all(frame, 0, 0);
+    lv_obj_clear_flag(frame, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(frame, LV_OBJ_FLAG_CLICKABLE);
+
+    // The WCS name (G54...) sits on the frame's right border, like a dimension
+    // line: a short gap is cut in the border (a strip in the background
+    // colour) and the name, turned on its side, is centred on the line
+    const int line_x = x + w - 1;
+    const int mid_y = frame_y + frame_h / 2;
+    const int lbl_w = 40, lbl_h = 20;
+    lv_obj_t *cut = lv_obj_create(tab);
+    lv_obj_set_size(cut, 3, lbl_w + 6);
+    lv_obj_set_pos(cut, line_x - 1, mid_y - (lbl_w + 6) / 2);
+    lv_obj_set_style_bg_color(cut, backgroundColor(tab), 0);
+    lv_obj_set_style_bg_opa(cut, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(cut, 0, 0);
+    lv_obj_set_style_radius(cut, 0, 0);
+    lv_obj_set_style_pad_all(cut, 0, 0);
+    lv_obj_clear_flag(cut, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(cut, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Turned (reads top to bottom) about the centre of its fixed box. Capitals
+    // sit in the upper part of the line box, which the rotation turns to the
+    // right, so the box goes 1 px left to centre the letters on the line
+    // (measured on a screenshot)
+    lbl_wcs_frame = lv_label_create(tab);
+    lv_obj_set_size(lbl_wcs_frame, lbl_w, lbl_h);
+    lv_obj_set_style_text_font(lbl_wcs_frame, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(lbl_wcs_frame, UITheme::POS_MODAL, 0);
+    lv_obj_set_style_text_align(lbl_wcs_frame, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_transform_pivot_x(lbl_wcs_frame, lbl_w / 2, 0);
+    lv_obj_set_style_transform_pivot_y(lbl_wcs_frame, lbl_h / 2, 0);
+    lv_obj_set_style_transform_rotation(lbl_wcs_frame, 900, 0);
+    lv_obj_set_pos(lbl_wcs_frame, line_x - 1 - lbl_w / 2, mid_y - lbl_h / 2);
+    wcs_shown[0] = '\0';
+    updateWcsLabel();
+    if (!wcs_timer) wcs_timer = lv_timer_create([](lv_timer_t *) { updateWcsLabel(); }, 250, nullptr);
 
     struct Spec {
         int row, col;  // col -1 = full width, else 0 / 1 for the left / right half
@@ -335,7 +386,9 @@ void UITabStatusJog::createActionButtons(lv_obj_t *tab, int x, int y, int w, int
         lv_event_cb_t cb;
     } specs[] = {
         // In the order they're used: home, set work zero, return to it,
-        // then the same for Z, lifting the torch and touching off
+        // then the same for Z, lifting the torch and touching off.
+        // Rows 1 and 2 sit inside the work-coordinate frame; row 3 lines up
+        // with them so all the small buttons are the same size
         {0, -1, LV_SYMBOL_HOME, "Home All", COLOR_MACHINE, onHomeClicked},
         {1, 0, LV_SYMBOL_GPS, "Zero XY", COLOR_ZERO, onZeroXYClicked},
         {1, 1, LV_SYMBOL_PLAY, "Go XY0", COLOR_GOTO, onGoToWorkZeroClicked},
@@ -345,15 +398,22 @@ void UITabStatusJog::createActionButtons(lv_obj_t *tab, int x, int y, int w, int
         {3, 1, LV_SYMBOL_DOWNLOAD, "Probe Z", COLOR_PROBE, onProbeClicked},
     };
     for (const Spec &sp : specs) {
+        int bx, by, bw, bhh;
+        if (sp.row == 0) {
+            // As wide as the small buttons below it, lined up with them
+            bx = inner_x; by = y; bw = inner_w; bhh = top_h;
+        } else {
+            bx = inner_x + sp.col * (inner_w - inner_half_w);
+            by = row_y(sp.row);
+            bw = inner_half_w; bhh = bh;
+        }
         lv_obj_t *btn = lv_button_create(tab);
-        bool full = sp.col < 0;
-        int row_y = y + (sp.row == 0 ? 0 : top_h + gap + (sp.row - 1) * (bh + gap));
-        lv_obj_set_size(btn, full ? w : half_w, sp.row == 0 ? top_h : bh);
-        lv_obj_set_pos(btn, x + (full ? 0 : sp.col * (w - half_w)), row_y);
+        lv_obj_set_size(btn, bw, bhh);
+        lv_obj_set_pos(btn, bx, by);
         lv_obj_set_style_bg_color(btn, sp.color, LV_PART_MAIN);
         lv_obj_set_style_pad_all(btn, 2, 0);
         lv_obj_add_event_cb(btn, sp.cb, LV_EVENT_CLICKED, nullptr);
-        if (full) {
+        if (sp.col < 0) {
             // Wide button: icon and text on one line
             lv_obj_t *lbl = lv_label_create(btn);
             lv_label_set_text_fmt(lbl, "%s  %s", sp.icon, sp.text);
@@ -371,6 +431,28 @@ void UITabStatusJog::createActionButtons(lv_obj_t *tab, int x, int y, int w, int
             lv_obj_align(lbl, LV_ALIGN_CENTER, 0, 14);
         }
     }
+}
+
+// Colour actually shown behind obj: the first ancestor (or obj) with an opaque
+// background, so a strip painted in it looks like a gap
+lv_color_t UITabStatusJog::backgroundColor(lv_obj_t *obj) {
+    for (lv_obj_t *o = obj; o; o = lv_obj_get_parent(o)) {
+        if (lv_obj_get_style_bg_opa(o, LV_PART_MAIN) >= LV_OPA_COVER) {
+            return lv_obj_get_style_bg_color(o, LV_PART_MAIN);
+        }
+    }
+    return lv_color_black();
+}
+
+// Shows the active work coordinate system (G54...) down the frame's right side
+void UITabStatusJog::updateWcsLabel() {
+    if (!lbl_wcs_frame) return;
+    const char *wcs = FluidNCClient::getStatus().modal_wcs;
+    if (!wcs[0]) wcs = "G54";
+    if (strcmp(wcs, wcs_shown) == 0) return;
+    strncpy(wcs_shown, wcs, sizeof(wcs_shown) - 1);
+    wcs_shown[sizeof(wcs_shown) - 1] = '\0';
+    lv_label_set_text(lbl_wcs_frame, wcs_shown);
 }
 
 void UITabStatusJog::onProbeClicked(lv_event_t *) {

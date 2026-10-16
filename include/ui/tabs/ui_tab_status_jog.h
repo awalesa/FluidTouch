@@ -20,10 +20,15 @@
 // turning faster than that is dropped.
 class UITabStatusJog {
 public:
-    // Dials, stacked vertically, with XY and Z step selectors on top.
-    static void createDials(lv_obj_t *tab, int x, int y, int w, int h);
+    // Dials, stacked vertically in x..x+w; each takes touches across
+    // touch_x..touch_x+touch_w, so the finger can circle outside the knob
+    // (coarser gear) without slipping off. A tap on a knob's centre changes
+    // its step, shown large in the middle of the knob (the axis letter is to
+    // its right); X and Y share one step.
+    static void createDials(lv_obj_t *tab, int x, int y, int w, int h, int touch_x, int touch_w);
     // The action buttons in four rows: Home All across, then pairs side by
-    // side. Probe Z runs Control > Probe "Z-" with that tab's parameters.
+    // side; the zero / go-to-zero pairs sit in a frame named after the active
+    // WCS (G54...). Probe Z runs Control > Probe "Z-" with that tab's parameters.
     static void createActionButtons(lv_obj_t *tab, int x, int y, int w, int h);
 
 private:
@@ -31,7 +36,9 @@ private:
         char axis;            // 'X', 'Y' or 'Z'
         lv_obj_t *knob;       // round knob
         lv_obj_t *marker;     // dot on the knob rim showing rotation
-        lv_obj_t *label;      // axis letter, turns with the knob
+        lv_obj_t *label;      // axis letter, right of the knob
+        lv_obj_t *step_label; // this dial's step, in the middle of the knob
+        int step_index;       // into the X/Y or Z step list (X and Y kept equal)
         int marker_radius;    // distance of the marker from the knob centre (px)
         float last_angle;     // finger angle at the previous event (degrees)
         bool tracking;        // finger is far enough from the centre to read an angle
@@ -41,6 +48,9 @@ private:
         uint32_t busy_until;  // estimated millis() when the jogs sent so far finish
         uint32_t last_send;   // millis() of the previous jog
         float speed;          // smoothed dial speed (mm/s)
+        uint32_t press_ms;    // when the finger went down
+        int32_t press_x, press_y;  // where it went down
+        bool tap;             // so far a tap on the centre (changes the step)
     };
 
     static constexpr int MAX_DIALS = 3;
@@ -57,20 +67,19 @@ private:
 
     static Dial dials[MAX_DIALS];
     static int dial_count;
-    static int step_index_xy;
-    static int step_index_z;
-    static lv_obj_t *lbl_step_xy;
-    static lv_obj_t *lbl_step_z;
     static lv_timer_t *send_timer;
+    static lv_obj_t *lbl_wcs_frame;  // WCS name on the frame round the work-zero buttons
+    static lv_timer_t *wcs_timer;
+    static char wcs_shown[8];
 
-    static float currentStep(char axis);
-    static void updateStepLabels();
+    static float stepOf(const Dial &d);
+    static void cycleStep(Dial &d);
+    static void updateWcsLabel();
+    static lv_color_t backgroundColor(lv_obj_t *obj);
     static void placeMarker(Dial &d);
     static bool jogAllowed();
 
     static void onDialEvent(lv_event_t *e);
-    static void onStepXYClicked(lv_event_t *e);
-    static void onStepZClicked(lv_event_t *e);
     static void onSendTimer(lv_timer_t *t);
     static void onZeroXYClicked(lv_event_t *e);
     static void onZeroZClicked(lv_event_t *e);
