@@ -655,7 +655,10 @@ void UICommon::createStatusBar() {
     MachineConfig selected_machine;
     
     if (MachineConfigManager::getSelectedMachine(selected_machine)) {
-        const char *symbol = connectionIsWireless(selected_machine.connection_type) ? LV_SYMBOL_WIFI : LV_SYMBOL_USB;
+        // Loop arrows = the live link to the controller; the transport (WiFi /
+        // ESP-NOW / USB) has its own symbol on line 2, so the two lines don't
+        // show the same icon
+        const char *symbol = LV_SYMBOL_LOOP;
         
         // Symbol (will be colored based on connection status)
         lbl_machine_symbol = lv_label_create(status_bar);

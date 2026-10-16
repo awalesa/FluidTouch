@@ -75,7 +75,9 @@ WPos/MPos the tab already shows; other tabs unchanged, job progress still
 takes priority. `UICommon::refreshStatusBarMode()` picks the mode (called on
 tab change and from `updateFileProgress`), `UICommon::updateFeedSpindle()`
 is fed from `main.cpp`. Also fixed upstream's shadowed `lbl_wpos_label`
-local, which kept "WPos:" visible over the job progress.
+local, which kept "WPos:" visible over the job progress. The machine line on the right uses a
+loop-arrows icon, LV_SYMBOL_LOOP (was the same WiFi/USB icon as the
+link line under it; a gear read as "settings").
 
 Files tab (also on `my-ui`): listing every file via `$SD/ListJSON` /
 `$LocalFS/ListJSON` was tried and reverted: on the owner's real controller it
