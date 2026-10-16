@@ -54,11 +54,17 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   MAX_LAG_MS, MAX_GAP_MS, GEAR_MIN/MAX)
 - Layout below the state row: three columns. Left: positions, message box
   under them (440 wide). Middle (x 455, where FEED RATE / RAPID / SPINDLE
-  was; removed): four stacked action buttons in workflow order,
-  **Home All** (`$H`, Idle or Alarm), **Zero Work XY** (`G10 L20 P0 X0 Y0`,
-  locked-WCS confirmation like the Control tab), **Work X0 Y0**
-  (`G90 G0 X0 Y0`, Idle only, Z untouched), **Probe Z** (Control > Probe
-  "Z-" with that tab's parameters, Idle only, `UITabControlProbe::probeZ()`).
+  was; removed): action buttons in four rows, workflow order:
+  **Home All** (`$H`, Idle or Alarm) across the column; **Zero XY**
+  (`G10 L20 P0 X0 Y0`) | **Go XY0** (`G90 G0 X0 Y0`); **Zero Z**
+  (`G10 L20 P0 Z0`) | **Go Z0** (`G90 G1 Z0 F<Jog default Z feed>`, not a
+  rapid: torch down onto the material); **Z40 G53** (`G53 G0 Z40`, torch to
+  the top in machine coordinates) | **Probe Z** (Control > Probe "Z-" with
+  that tab's parameters, `UITabControlProbe::probeZ()`). Half-width buttons:
+  icon on top, short caption under it. Zeroing asks for confirmation on a locked WCS
+  like the Control tab; moves and probe are Idle only. Colour = kind of
+  action: grey machine (home, G53), teal zero, amber go to work zero,
+  purple probe.
   Right: the dials
 - Code: `src/ui/tabs/ui_tab_status_jog.cpp` + `include/ui/tabs/ui_tab_status_jog.h`;
   `ui_tab_status.cpp` only calls into it (kept small to ease upstream merges)

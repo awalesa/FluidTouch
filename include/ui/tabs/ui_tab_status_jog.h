@@ -4,7 +4,8 @@
 #include <lvgl.h>
 
 // Status tab additions: one jog dial per axis (X/Y/Z) plus a column of
-// action buttons: home ($H), zero work X Y, go to work X0 Y0, probe Z.
+// action buttons: home ($H); zero work XY / go to work X0 Y0; zero work Z /
+// go to work Z0; go to machine Z40 (G53) / probe Z.
 //
 // Each dial works like a hand-wheel (MPG): turning it by one detent (30
 // degrees) moves the axis by the selected step, continuously in between, so
@@ -21,8 +22,8 @@ class UITabStatusJog {
 public:
     // Dials, stacked vertically, with XY and Z step selectors on top.
     static void createDials(lv_obj_t *tab, int x, int y, int w, int h);
-    // The four action buttons, stacked vertically. Probe Z runs
-    // Control > Probe "Z-" with that tab's parameters.
+    // The action buttons in four rows: Home All across, then pairs side by
+    // side. Probe Z runs Control > Probe "Z-" with that tab's parameters.
     static void createActionButtons(lv_obj_t *tab, int x, int y, int w, int h);
 
 private:
@@ -72,8 +73,13 @@ private:
     static void onStepZClicked(lv_event_t *e);
     static void onSendTimer(lv_timer_t *t);
     static void onZeroXYClicked(lv_event_t *e);
-    static void sendZeroXY();
+    static void onZeroZClicked(lv_event_t *e);
+    static void zeroAxes(const char *axes);
+    static void sendZero(const char *axes);
+    static void moveTo(const char *what, const char *words);
     static void onGoToWorkZeroClicked(lv_event_t *e);
+    static void onGoToWorkZ0Clicked(lv_event_t *e);
+    static void onZ40Clicked(lv_event_t *e);
     static void onHomeClicked(lv_event_t *e);
     static void onProbeClicked(lv_event_t *e);
 };

@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 UITabStatusJog::Dial UITabStatusJog::dials[UITabStatusJog::MAX_DIALS] = {};
 int UITabStatusJog::dial_count = 0;
@@ -306,38 +307,65 @@ void UITabStatusJog::onStepZClicked(lv_event_t *) {
 // ---------------------------------------------------------------------------
 // Action buttons
 // ---------------------------------------------------------------------------
+namespace {
+// Colour = kind of action, so neighbours can't be mixed up; none of them is
+// the X/Y axis blue/green or the red/yellow of Stop/Pause
+const lv_color_t COLOR_MACHINE = LV_COLOR_MAKE(0x55, 0x55, 0x55);  // homing, G53 moves (grey)
+const lv_color_t COLOR_ZERO = UITheme::AXIS_XY;                    // set work zero (teal, Control > "Zero All")
+const lv_color_t COLOR_GOTO = LV_COLOR_MAKE(0xC7, 0x6A, 0x00);     // rapid to work zero (amber)
+const lv_color_t COLOR_PROBE = UITheme::AXIS_Z;                    // probe Z (purple, Probe "Z-")
+
+const char *pending_zero_axes = "";  // axes to zero once a locked-WCS dialog is confirmed
+} // namespace
+
 void UITabStatusJog::createActionButtons(lv_obj_t *tab, int x, int y, int w, int h) {
     const int gap = 10;
-    const int count = 4;
-    const int bh = (h - gap * (count - 1)) / count;
+    const int rows = 4;
+    const int bh = (h - gap * (rows - 1)) / rows;
+    const int half_w = (w - gap) / 2;
 
     struct Spec {
+        int row, col;  // col -1 = full width, else 0 / 1 for the left / right half
+        const char *icon;
         const char *text;
         lv_color_t color;
         lv_event_cb_t cb;
-    } specs[count] = {
-        // In the order they're used: home, set work zero, return to it, touch off Z.
-        // A different colour each so they can't be mixed up, none of them the
-        // X/Y axis blue/green or the red/yellow of Stop/Pause: grey for homing,
-        // teal for zeroing (Control > "Zero All"), amber for the rapid move,
-        // purple for Z probing (Probe "Z-")
-        {LV_SYMBOL_HOME " Home\nAll", LV_COLOR_MAKE(0x55, 0x55, 0x55), onHomeClicked},
-        {LV_SYMBOL_GPS " Zero\nWork XY", UITheme::AXIS_XY, onZeroXYClicked},
-        {LV_SYMBOL_PLAY " Work\nX0 Y0", LV_COLOR_MAKE(0xC7, 0x6A, 0x00), onGoToWorkZeroClicked},
-        {LV_SYMBOL_DOWN " Probe\nZ", UITheme::AXIS_Z, onProbeClicked},
+    } specs[] = {
+        // In the order they're used: home, set work zero, return to it,
+        // then the same for Z, lifting the torch and touching off
+        {0, -1, LV_SYMBOL_HOME, "Home All", COLOR_MACHINE, onHomeClicked},
+        {1, 0, LV_SYMBOL_GPS, "Zero XY", COLOR_ZERO, onZeroXYClicked},
+        {1, 1, LV_SYMBOL_PLAY, "Go XY0", COLOR_GOTO, onGoToWorkZeroClicked},
+        {2, 0, LV_SYMBOL_GPS, "Zero Z", COLOR_ZERO, onZeroZClicked},
+        {2, 1, LV_SYMBOL_DOWN, "Go Z0", COLOR_GOTO, onGoToWorkZ0Clicked},
+        {3, 0, LV_SYMBOL_UPLOAD, "Z40 G53", COLOR_MACHINE, onZ40Clicked},
+        {3, 1, LV_SYMBOL_DOWNLOAD, "Probe Z", COLOR_PROBE, onProbeClicked},
     };
-    for (int i = 0; i < count; i++) {
+    for (const Spec &sp : specs) {
         lv_obj_t *btn = lv_button_create(tab);
-        lv_obj_set_size(btn, w, bh);
-        lv_obj_set_pos(btn, x, y + i * (bh + gap));
-        lv_obj_set_style_bg_color(btn, specs[i].color, LV_PART_MAIN);
+        bool full = sp.col < 0;
+        lv_obj_set_size(btn, full ? w : half_w, bh);
+        lv_obj_set_pos(btn, x + (full ? 0 : sp.col * (w - half_w)), y + sp.row * (bh + gap));
+        lv_obj_set_style_bg_color(btn, sp.color, LV_PART_MAIN);
         lv_obj_set_style_pad_all(btn, 2, 0);
-        lv_obj_add_event_cb(btn, specs[i].cb, LV_EVENT_CLICKED, nullptr);
-        lv_obj_t *lbl = lv_label_create(btn);
-        lv_label_set_text(lbl, specs[i].text);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
-        lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_center(lbl);
+        lv_obj_add_event_cb(btn, sp.cb, LV_EVENT_CLICKED, nullptr);
+        if (full) {
+            // Wide button: icon and text on one line
+            lv_obj_t *lbl = lv_label_create(btn);
+            lv_label_set_text_fmt(lbl, "%s  %s", sp.icon, sp.text);
+            lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
+            lv_obj_center(lbl);
+        } else {
+            // Half button: larger icon on top, short caption under it
+            lv_obj_t *icon = lv_label_create(btn);
+            lv_label_set_text(icon, sp.icon);
+            lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
+            lv_obj_align(icon, LV_ALIGN_CENTER, 0, -11);
+            lv_obj_t *lbl = lv_label_create(btn);
+            lv_label_set_text(lbl, sp.text);
+            lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+            lv_obj_align(lbl, LV_ALIGN_CENTER, 0, 14);
+        }
     }
 }
 
@@ -351,41 +379,76 @@ void UITabStatusJog::onProbeClicked(lv_event_t *) {
     UITabControlProbe::probeZ();
 }
 
-void UITabStatusJog::sendZeroXY() {
-    bool x = UICommon::isXAxisEnabled(), y = UICommon::isYAxisEnabled();
+// axes: "XY" or "Z"; disabled axes are left out
+void UITabStatusJog::sendZero(const char *axes) {
+    char words[16] = "";
+    for (const char *a = axes; *a; a++) {
+        bool enabled = (*a == 'X') ? UICommon::isXAxisEnabled()
+                     : (*a == 'Y') ? UICommon::isYAxisEnabled()
+                                   : UICommon::isZAxisEnabled();
+        if (!enabled) continue;
+        size_t n = strlen(words);
+        snprintf(words + n, sizeof(words) - n, " %c0", *a);
+    }
+    if (!words[0]) return;
     char cmd[32];
-    snprintf(cmd, sizeof(cmd), "G10 L20 P0%s%s\n", x ? " X0" : "", y ? " Y0" : "");
-    Serial.printf("[StatusJog] Zero XY: %s", cmd);
+    snprintf(cmd, sizeof(cmd), "G10 L20 P0%s\n", words);
+    Serial.printf("[StatusJog] Zero %s: %s", axes, cmd);
     FluidNCClient::sendCommand(cmd);
 }
 
-void UITabStatusJog::onZeroXYClicked(lv_event_t *) {
+void UITabStatusJog::zeroAxes(const char *axes) {
     if (!FluidNCClient::isConnected()) return;
-    if (!UICommon::isXAxisEnabled() && !UICommon::isYAxisEnabled()) return;
     // Same lock check as the Control tab's zero buttons
     if (WCSConfig::isCurrentWCSLocked()) {
         const FluidNCStatus &status = FluidNCClient::getStatus();
         char wcs_name[32];
         WCSConfig::getCurrentWCSName(wcs_name, sizeof(wcs_name));
-        UICommon::showWCSLockDialog(status.modal_wcs, wcs_name, [](lv_event_t *) { sendZeroXY(); });
+        pending_zero_axes = axes;
+        UICommon::showWCSLockDialog(status.modal_wcs, wcs_name, [](lv_event_t *) { sendZero(pending_zero_axes); });
         return;
     }
-    sendZeroXY();
+    sendZero(axes);
+}
+
+void UITabStatusJog::onZeroXYClicked(lv_event_t *) { zeroAxes("XY"); }
+void UITabStatusJog::onZeroZClicked(lv_event_t *) { zeroAxes("Z"); }
+
+// Move in the current coordinate system. Idle only; the other axes stay put
+void UITabStatusJog::moveTo(const char *what, const char *words) {
+    if (!FluidNCClient::isConnected()) return;
+    if (FluidNCClient::getStatus().state != STATE_IDLE) {
+        Serial.printf("[StatusJog] %s ignored: machine not idle\n", what);
+        return;
+    }
+    if (!words[0]) return;
+    char cmd[40];
+    snprintf(cmd, sizeof(cmd), "%s\n", words);
+    Serial.printf("[StatusJog] %s: %s", what, cmd);
+    FluidNCClient::sendCommand(cmd);
 }
 
 void UITabStatusJog::onGoToWorkZeroClicked(lv_event_t *) {
-    if (!FluidNCClient::isConnected()) return;
-    if (FluidNCClient::getStatus().state != STATE_IDLE) {
-        Serial.println("[StatusJog] Go to work zero ignored: machine not idle");
-        return;
-    }
-    // XY only, in the current work coordinate system; Z stays where it is
     bool x = UICommon::isXAxisEnabled(), y = UICommon::isYAxisEnabled();
     if (!x && !y) return;
-    char cmd[32];
-    snprintf(cmd, sizeof(cmd), "G90 G0%s%s\n", x ? " X0" : "", y ? " Y0" : "");
-    Serial.printf("[StatusJog] Go to work zero: %s", cmd);
-    FluidNCClient::sendCommand(cmd);
+    char words[32];
+    snprintf(words, sizeof(words), "G90 G0%s%s", x ? " X0" : "", y ? " Y0" : "");
+    moveTo("Go to work X0 Y0", words);
+}
+
+void UITabStatusJog::onGoToWorkZ0Clicked(lv_event_t *) {
+    // Z0 is on the material, so the torch comes down at the Z jog feed
+    // (Settings > Jog), not a rapid, in case Z0 is off or something is in the way
+    if (!UICommon::isZAxisEnabled()) return;
+    char words[32];
+    snprintf(words, sizeof(words), "G90 G1 Z0 F%d", UITabSettingsJog::getDefaultZFeed());
+    moveTo("Go to work Z0", words);
+}
+
+void UITabStatusJog::onZ40Clicked(lv_event_t *) {
+    // Machine coordinates: lift the torch to the top regardless of work offsets
+    if (!UICommon::isZAxisEnabled()) return;
+    moveTo("Go to machine Z40", "G53 G0 Z40");
 }
 
 void UITabStatusJog::onHomeClicked(lv_event_t *) {
