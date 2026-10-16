@@ -22,6 +22,10 @@ public:
     static void updateMachineState(const char *state);
     static void updateConnectionStatus(bool machine_connected, bool wifi_connected);
     static void updateFileProgress(bool is_printing, float percent, const char *filename, uint32_t elapsed_ms);
+    // Feed / overrides / spindle, shown in place of state and positions
+    // while the Status tab (which already shows those) is active
+    static void updateFeedSpindle(float feed, float feed_ov, float rapid_ov, float spindle, float spindle_ov);
+    static void refreshStatusBarMode();
     
     // Dialog functions
     static void showMachineSelectConfirmDialog();

@@ -73,6 +73,9 @@ void UITabs::createTabs() {
     
     // Add event handler for tab changes
     lv_obj_add_event_cb(tabview, tab_changed_event_cb, LV_EVENT_VALUE_CHANGED, nullptr);
+
+    // Status tab is active at start: the status bar shows feed instead of positions
+    UICommon::refreshStatusBarMode();
 }
 
 // Tab change event handler
@@ -80,6 +83,9 @@ void UITabs::tab_changed_event_cb(lv_event_t *e) {
     lv_obj_t *tabview = (lv_obj_t*)lv_event_get_target(e);
     uint32_t active_tab = lv_tabview_get_tab_active(tabview);
     
+    // Status bar shows feed / spindle on the Status tab, positions elsewhere
+    UICommon::refreshStatusBarMode();
+
     // Tab indices: 0=Status, 1=Control, 2=Files, 3=Macros, 4=Terminal, 5=Settings
     if (active_tab == 2) {  // Files tab
         // Trigger initial load on first selection

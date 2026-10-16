@@ -83,6 +83,16 @@ static bool last_auto_reporting = false;     // Cached auto-reporting status
 
 // File progress cached values for delta checking
 static char last_filename[128] = "";
+
+// Status bar left area: job progress while a job runs, otherwise feed /
+// overrides / spindle on the Status tab, otherwise state and positions
+static bool bar_job_running = false;
+static lv_obj_t *bar_feed_panel = nullptr;
+static lv_obj_t *bar_feed_value = nullptr;
+static lv_obj_t *bar_feed_ov = nullptr;
+static lv_obj_t *bar_rapid_ov = nullptr;
+static lv_obj_t *bar_spindle_value = nullptr;
+static lv_obj_t *bar_spindle_ov = nullptr;
 static float last_percent = -1.0f;
 static uint32_t last_elapsed_sec = 0xFFFFFFFF;  // Use seconds for comparison
 static uint32_t last_estimated_sec = 0xFFFFFFFF;
@@ -101,6 +111,7 @@ static void status_bar_left_click_handler(lv_event_t *e) {
         lv_obj_t *tabview = UITabs::getTabview();
         if (tabview) {
             lv_tabview_set_active(tabview, 0, LV_ANIM_OFF);
+            UICommon::refreshStatusBarMode();  // set_active doesn't send VALUE_CHANGED
         }
     }
 }
@@ -429,7 +440,7 @@ void UICommon::createStatusBar() {
 
     // Middle: Work Position (line 1) and Machine Position (line 2)
     // Work Position - Line 1
-    lv_obj_t *lbl_wpos_label = lv_label_create(status_bar);
+    lbl_wpos_label = lv_label_create(status_bar);  // the member, so it can be hidden
     lv_label_set_text(lbl_wpos_label, "WPos:");
     lv_obj_set_style_text_font(lbl_wpos_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(lbl_wpos_label, UITheme::ACCENT_SECONDARY, 0);  // Teal
@@ -599,6 +610,45 @@ void UICommon::createStatusBar() {
     lv_obj_set_style_text_font(lbl_estimated_unit, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(lbl_estimated_unit, UITheme::TEXT_DISABLED, 0);
     lv_obj_set_pos(lbl_estimated_unit, 480, 22);
+
+    // Feed panel: same two-line grid as WPos / MPos, shown instead of them
+    // on the Status tab (refreshStatusBarMode)
+    bar_feed_panel = lv_obj_create(status_bar);
+    lv_obj_set_size(bar_feed_panel, 550, 50);
+    lv_obj_set_pos(bar_feed_panel, 0, 0);
+    lv_obj_set_style_bg_opa(bar_feed_panel, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(bar_feed_panel, 0, 0);
+    lv_obj_set_style_pad_all(bar_feed_panel, 0, 0);
+    lv_obj_clear_flag(bar_feed_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(bar_feed_panel, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(bar_feed_panel, LV_OBJ_FLAG_HIDDEN);
+
+    auto bar_label = [](lv_obj_t *parent, const char *text, const lv_font_t *font, lv_color_t color,
+                        int x, int y) {
+        lv_obj_t *l = lv_label_create(parent);
+        lv_label_set_text(l, text);
+        lv_obj_set_style_text_font(l, font, 0);
+        lv_obj_set_style_text_color(l, color, 0);
+        lv_obj_set_pos(l, x, y);
+        return l;
+    };
+    // Big feed rate on the left, where the state is otherwise
+    bar_feed_value = bar_label(bar_feed_panel, "---", &lv_font_montserrat_32, lv_color_white(), 5, 5);
+    lv_obj_set_width(bar_feed_value, 120);
+    lv_obj_set_style_text_align(bar_feed_value, LV_TEXT_ALIGN_RIGHT, 0);
+    bar_label(bar_feed_panel, "mm/min", &lv_font_montserrat_14, UITheme::TEXT_DISABLED, 130, 24);
+
+    lv_obj_t *ovr_label = bar_label(bar_feed_panel, "Ovr:", &lv_font_montserrat_18, UITheme::ACCENT_SECONDARY, 200, 3);
+    lv_obj_set_width(ovr_label, 60);
+    lv_obj_set_style_text_align(ovr_label, LV_TEXT_ALIGN_RIGHT, 0);
+    bar_feed_ov = bar_label(bar_feed_panel, "F ---%", &lv_font_montserrat_18, UITheme::UI_INFO, 270, 3);
+    bar_rapid_ov = bar_label(bar_feed_panel, "R ---%", &lv_font_montserrat_18, UITheme::UI_INFO, 380, 3);
+    bar_spindle_ov = bar_label(bar_feed_panel, "S ---%", &lv_font_montserrat_18, UITheme::UI_INFO, 490, 3);
+
+    lv_obj_t *spindle_label = bar_label(bar_feed_panel, "Spdl:", &lv_font_montserrat_18, UITheme::POS_MACHINE, 200, 27);
+    lv_obj_set_width(spindle_label, 60);
+    lv_obj_set_style_text_align(spindle_label, LV_TEXT_ALIGN_RIGHT, 0);
+    bar_spindle_value = bar_label(bar_feed_panel, "--- RPM", &lv_font_montserrat_18, lv_color_white(), 270, 27);
 
     // Right side Line 1: Machine name with symbol
     // Get selected machine from config manager
@@ -1546,18 +1596,10 @@ void UICommon::checkStatePopups(int current_state, const char *last_message, con
 void UICommon::updateFileProgress(bool is_printing, float percent, const char *filename, uint32_t elapsed_ms) {
     if (!lbl_file_progress_container) return;
     
+    bar_job_running = is_printing;
+    refreshStatusBarMode();
+
     if (is_printing) {
-        // Show job progress, hide normal status/position display
-        lv_obj_clear_flag(lbl_file_progress_container, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_status) lv_obj_add_flag(lbl_status, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_wpos_label) lv_obj_add_flag(lbl_wpos_label, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_wpos_x) lv_obj_add_flag(lbl_wpos_x, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_wpos_y) lv_obj_add_flag(lbl_wpos_y, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_wpos_z) lv_obj_add_flag(lbl_wpos_z, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_mpos_label) lv_obj_add_flag(lbl_mpos_label, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_mpos_x) lv_obj_add_flag(lbl_mpos_x, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_mpos_y) lv_obj_add_flag(lbl_mpos_y, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_mpos_z) lv_obj_add_flag(lbl_mpos_z, LV_OBJ_FLAG_HIDDEN);
         
         // Update filename (delta check)
         if (lbl_filename && filename && strcmp(filename, last_filename) != 0) {
@@ -1620,24 +1662,52 @@ void UICommon::updateFileProgress(bool is_printing, float percent, const char *f
             }
         }
     } else {
-        // Hide job progress, show normal status/position display
-        lv_obj_add_flag(lbl_file_progress_container, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_status) lv_obj_clear_flag(lbl_status, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_wpos_label) lv_obj_clear_flag(lbl_wpos_label, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_wpos_x) lv_obj_clear_flag(lbl_wpos_x, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_wpos_y) lv_obj_clear_flag(lbl_wpos_y, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_wpos_z) lv_obj_clear_flag(lbl_wpos_z, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_mpos_label) lv_obj_clear_flag(lbl_mpos_label, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_mpos_x) lv_obj_clear_flag(lbl_mpos_x, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_mpos_y) lv_obj_clear_flag(lbl_mpos_y, LV_OBJ_FLAG_HIDDEN);
-        if (lbl_mpos_z) lv_obj_clear_flag(lbl_mpos_z, LV_OBJ_FLAG_HIDDEN);
-        
         // Reset cached values when not printing
         last_filename[0] = '\0';
         last_percent = -1.0f;
         last_elapsed_sec = 0xFFFFFFFF;
         last_estimated_sec = 0xFFFFFFFF;
     }
+}
+
+// Pick what the status bar's left area shows: job progress while a job runs;
+// otherwise feed / overrides / spindle on the Status tab (it shows state and
+// positions itself) or state and positions on every other tab
+void UICommon::refreshStatusBarMode() {
+    if (!lbl_file_progress_container) return;
+    lv_obj_t *tabview = UITabs::getTabview();
+    bool status_tab = tabview && lv_tabview_get_tab_active(tabview) == 0 &&
+                      (isYAxisEnabled() || isZAxisEnabled());  // not the reduced-axis Main tab
+    bool show_job = bar_job_running;
+    bool show_feed = !show_job && status_tab && bar_feed_panel;
+    bool show_pos = !show_job && !show_feed;
+
+    auto show = [](lv_obj_t *obj, bool visible) {
+        if (!obj) return;
+        if (visible) lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    };
+    show(lbl_file_progress_container, show_job);
+    show(bar_feed_panel, show_feed);
+    lv_obj_t *pos_objs[] = {lbl_status, lbl_wpos_label, lbl_wpos_x, lbl_wpos_y, lbl_wpos_z, lbl_wpos_a,
+                            lbl_mpos_label, lbl_mpos_x, lbl_mpos_y, lbl_mpos_z};
+    for (lv_obj_t *obj : pos_objs) show(obj, show_pos);
+}
+
+void UICommon::updateFeedSpindle(float feed, float feed_ov, float rapid_ov, float spindle, float spindle_ov) {
+    if (!bar_feed_panel) return;
+    // -9999 = no data (disconnected)
+    auto set = [](lv_obj_t *lbl, const char *fmt, float v, const char *none) {
+        char buf[24];
+        if (v <= -9999.0f) snprintf(buf, sizeof(buf), "%s", none);
+        else snprintf(buf, sizeof(buf), fmt, v);
+        if (strcmp(lv_label_get_text(lbl), buf) != 0) lv_label_set_text(lbl, buf);
+    };
+    set(bar_feed_value, "%.0f", feed, "---");
+    set(bar_feed_ov, "F %.0f%%", feed_ov, "F ---%");
+    set(bar_rapid_ov, "R %.0f%%", rapid_ov, "R ---%");
+    set(bar_spindle_ov, "S %.0f%%", spindle_ov, "S ---%");
+    set(bar_spindle_value, "%.0f RPM", spindle, "--- RPM");
 }
 
 void UICommon::showWCSLockDialog(const char *wcs_code, const char *wcs_name, void (*continue_callback)(lv_event_t*)) {

@@ -242,6 +242,8 @@ void loop()
             UITabStatus::updateFeedRate(status.feed_rate, status.feed_override);
             UITabStatus::updateRapidOverride(status.rapid_override);
             UITabStatus::updateSpindle(status.spindle_speed, status.spindle_override);
+            UICommon::updateFeedSpindle(status.feed_rate, status.feed_override, status.rapid_override,
+                                        status.spindle_speed, status.spindle_override);
             UITabStatus::updateModalStates(status.modal_wcs, status.modal_plane, status.modal_distance,
                                         status.modal_units, status.modal_motion, status.modal_feedrate,
                                         status.modal_spindle, status.modal_coolant, status.modal_tool);
@@ -356,6 +358,7 @@ void loop()
             UITabStatus::updateFeedRate(-9999.0f, -9999.0f);  // Reset feed rate and override
             UITabStatus::updateRapidOverride(-9999.0f);        // Reset rapid override
             UITabStatus::updateSpindle(-9999.0f, -9999.0f);    // Reset spindle and override
+            UICommon::updateFeedSpindle(-9999.0f, -9999.0f, -9999.0f, -9999.0f, -9999.0f);
             UITabStatus::updateModalStates("---", "---", "---", "---", "---", "---", "---", "---", "---");
 
             // Update Main tab with OFFLINE state and reset all values (no-ops if not created)
