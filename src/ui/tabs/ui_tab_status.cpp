@@ -584,9 +584,9 @@ void UITabStatus::create(lv_obj_t *tab) {
     // so keep it to the width of the two position columns
     int message_width = visible_axis_rows < 3 ? 440 : 600;
 
-    // Quick buttons (go to work X0 Y0, home) share the bottom row with the
+    // Quick buttons (zero X Y, go to work X0 Y0, home) share the bottom row with the
     // message box, to the right of it, below the feed/spindle column
-    const int quick_w = 270;
+    const int quick_w = 330;
     const int quick_y = four_axis_rows ? 280 : 260;
     message_width = 600 - quick_w - 10;
     UITabStatusJog::createQuickButtons(tab, 600 - quick_w, quick_y, quick_w, 340 - quick_y);

@@ -4,7 +4,7 @@
 #include <lvgl.h>
 
 // Status tab additions: one jog dial per axis (X/Y/Z) plus quick
-// "go to work X0 Y0" and "home ($H)" buttons.
+// "zero X Y", "go to work X0 Y0" and "home ($H)" buttons.
 //
 // Each dial works like a hand-wheel (MPG): turning it by one detent moves
 // the axis by the selected step. Detents are collected and sent as one
@@ -13,7 +13,7 @@ class UITabStatusJog {
 public:
     // Dials, stacked vertically, with a step selector on top.
     static void createDials(lv_obj_t *tab, int x, int y, int w, int h);
-    // The two quick-action buttons, side by side.
+    // The three quick-action buttons, side by side.
     static void createQuickButtons(lv_obj_t *tab, int x, int y, int w, int h);
 
 private:
@@ -47,6 +47,8 @@ private:
     static void onDialEvent(lv_event_t *e);
     static void onStepClicked(lv_event_t *e);
     static void onSendTimer(lv_timer_t *t);
+    static void onZeroXYClicked(lv_event_t *e);
+    static void sendZeroXY();
     static void onGoToWorkZeroClicked(lv_event_t *e);
     static void onHomeClicked(lv_event_t *e);
 };

@@ -2,6 +2,7 @@
 #include "ui/tabs/settings/ui_tab_settings_jog.h"
 #include "ui/ui_theme.h"
 #include "ui/ui_common.h"
+#include "ui/wcs_config.h"
 #include "network/fluidnc_client.h"
 #include <Arduino.h>
 #include <math.h>
@@ -84,7 +85,7 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
 
     const int top = y + step_h + 6;
     const int cell_h = (h - (top - y)) / dial_count;
-    const int knob_d = cell_h - 6 < w - 50 ? cell_h - 6 : w - 50;
+    const int knob_d = cell_h - 8 < w ? cell_h - 8 : w;
 
     for (int i = 0; i < dial_count; i++) {
         Dial &d = dials[i];
@@ -107,16 +108,9 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
         lv_obj_add_flag(cell, LV_OBJ_FLAG_PRESS_LOCK);
         lv_obj_add_event_cb(cell, onDialEvent, LV_EVENT_ALL, &d);
 
-        lv_obj_t *lbl_axis = lv_label_create(cell);
-        char axis_txt[2] = {d.axis, 0};
-        lv_label_set_text(lbl_axis, axis_txt);
-        lv_obj_set_style_text_font(lbl_axis, &lv_font_montserrat_32, 0);
-        lv_obj_set_style_text_color(lbl_axis, axisColor(d.axis), 0);
-        lv_obj_align(lbl_axis, LV_ALIGN_LEFT_MID, 8, 0);
-
         d.knob = lv_obj_create(cell);
         lv_obj_set_size(d.knob, knob_d, knob_d);
-        lv_obj_align(d.knob, LV_ALIGN_RIGHT_MID, -4, 0);
+        lv_obj_center(d.knob);
         lv_obj_set_style_radius(d.knob, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_color(d.knob, UITheme::JOYSTICK_BG, 0);
         lv_obj_set_style_border_color(d.knob, axisColor(d.axis), 0);
@@ -127,14 +121,13 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
         // Highlight the rim while the dial is being turned
         lv_obj_set_style_border_color(d.knob, lv_color_white(), LV_STATE_PRESSED);
 
-        // Centre hub
-        lv_obj_t *hub = lv_obj_create(d.knob);
-        lv_obj_set_size(hub, knob_d / 4, knob_d / 4);
-        lv_obj_center(hub);
-        lv_obj_set_style_radius(hub, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(hub, UITheme::JOYSTICK_LINE, 0);
-        lv_obj_set_style_border_width(hub, 0, 0);
-        lv_obj_clear_flag(hub, LV_OBJ_FLAG_CLICKABLE);
+        // Axis letter in the middle of the knob
+        lv_obj_t *lbl_axis = lv_label_create(d.knob);
+        char axis_txt[2] = {d.axis, 0};
+        lv_label_set_text(lbl_axis, axis_txt);
+        lv_obj_set_style_text_font(lbl_axis, &lv_font_montserrat_32, 0);
+        lv_obj_set_style_text_color(lbl_axis, axisColor(d.axis), 0);
+        lv_obj_center(lbl_axis);
 
         // Finger-grip dot that turns with the dial
         d.marker = lv_obj_create(d.knob);
@@ -143,7 +136,7 @@ void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
         lv_obj_set_style_bg_color(d.marker, axisColor(d.axis), 0);
         lv_obj_set_style_border_width(d.marker, 0, 0);
         lv_obj_clear_flag(d.marker, LV_OBJ_FLAG_CLICKABLE);
-        d.marker_radius = knob_d / 2 - 12;  // dot sits just inside the rim
+        d.marker_radius = knob_d / 2 - 11;  // dot sits just inside the rim
         placeMarker(d);
     }
 
@@ -229,18 +222,20 @@ void UITabStatusJog::onStepClicked(lv_event_t *) {
 // Quick-action buttons
 // ---------------------------------------------------------------------------
 void UITabStatusJog::createQuickButtons(lv_obj_t *tab, int x, int y, int w, int h) {
-    const int gap = 10;
-    const int bw = (w - gap) / 2;
+    const int gap = 8;
+    const int count = 3;
+    const int bw = (w - gap * (count - 1)) / count;
 
     struct Spec {
         const char *text;
         lv_color_t color;
         lv_event_cb_t cb;
-    } specs[] = {
-        {LV_SYMBOL_GPS "\nWork X0 Y0", UITheme::BTN_CONNECT, onGoToWorkZeroClicked},
+    } specs[count] = {
+        {"Zero\nX Y", UITheme::AXIS_XY, onZeroXYClicked},
+        {LV_SYMBOL_GPS "\nX0 Y0", UITheme::BTN_CONNECT, onGoToWorkZeroClicked},
         {LV_SYMBOL_HOME "\nHome", UITheme::ACCENT_SECONDARY, onHomeClicked},
     };
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < count; i++) {
         lv_obj_t *btn = lv_button_create(tab);
         lv_obj_set_size(btn, bw, h);
         lv_obj_set_pos(btn, x + i * (bw + gap), y);
@@ -253,6 +248,28 @@ void UITabStatusJog::createQuickButtons(lv_obj_t *tab, int x, int y, int w, int 
         lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_center(lbl);
     }
+}
+
+void UITabStatusJog::sendZeroXY() {
+    bool x = UICommon::isXAxisEnabled(), y = UICommon::isYAxisEnabled();
+    char cmd[32];
+    snprintf(cmd, sizeof(cmd), "G10 L20 P0%s%s\n", x ? " X0" : "", y ? " Y0" : "");
+    Serial.printf("[StatusJog] Zero XY: %s", cmd);
+    FluidNCClient::sendCommand(cmd);
+}
+
+void UITabStatusJog::onZeroXYClicked(lv_event_t *) {
+    if (!FluidNCClient::isConnected()) return;
+    if (!UICommon::isXAxisEnabled() && !UICommon::isYAxisEnabled()) return;
+    // Same lock check as the Control tab's zero buttons
+    if (WCSConfig::isCurrentWCSLocked()) {
+        const FluidNCStatus &status = FluidNCClient::getStatus();
+        char wcs_name[32];
+        WCSConfig::getCurrentWCSName(wcs_name, sizeof(wcs_name));
+        UICommon::showWCSLockDialog(status.modal_wcs, wcs_name, [](lv_event_t *) { sendZeroXY(); });
+        return;
+    }
+    sendZeroXY();
 }
 
 void UITabStatusJog::onGoToWorkZeroClicked(lv_event_t *) {
