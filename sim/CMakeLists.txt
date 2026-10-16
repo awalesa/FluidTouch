@@ -1,7 +1,7 @@
 # FluidTouch desktop simulator
 #
-# Builds the real FluidTouch UI + FluidNC client (src/) as a Windows/Linux
-# desktop app. The ESP32/Arduino APIs the firmware uses are replaced by the
+# Builds the real FluidTouch UI + FluidNC client (src/) as a Windows, macOS or
+# Linux desktop app. The ESP32/Arduino APIs the firmware uses are replaced by the
 # desktop implementations in sim/include and sim/src, and the display/touch
 # drivers are replaced by an SDL2 window. See sim/README.md.
 
@@ -52,6 +52,20 @@ FetchContent_Declare(mbedtls
 # Download sources only (SOURCE_SUBDIR points at a non-existent dir so their
 # own CMake projects aren't added) - we compile them ourselves below.
 FetchContent_MakeAvailable(lvgl arduinojson arduinowebsockets mbedtls)
+
+# macOS: Homebrew installs SDL2's CMake package under its own prefix
+# (/opt/homebrew on Apple Silicon, /usr/local on Intel). Add it to the search
+# path so a plain `cmake -S sim -B sim/build` works without extra flags.
+if(APPLE)
+    find_program(BREW_EXECUTABLE brew)
+    if(BREW_EXECUTABLE)
+        execute_process(COMMAND "${BREW_EXECUTABLE}" --prefix sdl2
+            OUTPUT_VARIABLE BREW_SDL2_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        if(BREW_SDL2_PREFIX)
+            list(APPEND CMAKE_PREFIX_PATH "${BREW_SDL2_PREFIX}")
+        endif()
+    endif()
+endif()
 
 find_package(SDL2 REQUIRED CONFIG)
 

@@ -2,3 +2,4 @@
 *.FCStd binary
 *.3mf binary
 *.stl binary
+*.sh text eol=lf

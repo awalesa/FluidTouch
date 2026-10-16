@@ -24,6 +24,13 @@
 #endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <csignal>
+#include <climits>
+#include <unistd.h>
+#endif
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
 #endif
 
 void setup();
@@ -55,6 +62,19 @@ std::string exePath(const char *argv0) {
     char buf[MAX_PATH];
     DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
     if (n > 0 && n < sizeof(buf)) return buf;
+#elif defined(__APPLE__)
+    // argv[0] isn't a usable path when launched via PATH or a symlink
+    char buf[PATH_MAX];
+    uint32_t size = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &size) == 0) {
+        std::error_code ec;
+        auto p = std::filesystem::canonical(buf, ec);
+        return ec ? std::string(buf) : p.string();
+    }
+#elif defined(__linux__)
+    char buf[PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n > 0) { buf[n] = 0; return buf; }
 #endif
     std::error_code ec;
     auto p = std::filesystem::absolute(argv0, ec);
@@ -266,6 +286,13 @@ void shutdown() {
 
 int main(int argc, char **argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
+#ifndef _WIN32
+    // POSIX delivers SIGPIPE (which kills the process) when send() hits a
+    // socket the controller already closed. Windows just returns an error;
+    // make macOS/Linux behave the same so a disconnect is handled by the
+    // firmware instead of crashing the simulator.
+    signal(SIGPIPE, SIG_IGN);
+#endif
 
     sim::g_data_dir = SIM_DEFAULT_DATA_DIR;
     for (int i = 1; i < argc; i++) {

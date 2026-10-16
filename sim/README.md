@@ -45,10 +45,46 @@ a package manager that provides Linux-style development tools on Windows.
 If MSYS2 isn't in `C:\msys64`, set `MSYS2_ROOT` or pass `-Msys2Root <path>` to
 the build script.
 
-**Linux (untested):** install `gcc g++ cmake ninja-build libsdl2-dev`, then run
-the `cmake` commands shown under [Building manually](#building-manually).
+## One-time setup (macOS)
+
+1. Install the Xcode Command Line Tools (provides Apple Clang):
+   ```bash
+   xcode-select --install
+   ```
+2. Install SDL2, CMake and Ninja with [Homebrew](https://brew.sh):
+   ```bash
+   brew install sdl2 cmake ninja
+   ```
+
+Works on both Apple Silicon and Intel Macs. CMake finds Homebrew's SDL2
+automatically.
+
+## One-time setup (Linux)
+
+```bash
+sudo apt install clang cmake ninja-build libsdl2-dev   # Debian/Ubuntu
+```
 
 ## Build and run
+
+### macOS / Linux
+
+From the repository root:
+
+```bash
+./sim/build.sh --run      # build (incremental), then launch
+./sim/build.sh            # build only
+./sim/build.sh --clean    # delete sim/build and rebuild from scratch
+./sim/build.sh --run -- --data ~/ft-test   # pass arguments to the simulator
+```
+
+The executable is `sim/build/fluidtouch_sim`. Run `python3` instead of
+`python` for the fake FluidNC server, and use `/` paths in the examples
+below. On macOS the first launch may ask whether the simulator may accept
+incoming network connections; it only needs outgoing ones, so either answer
+works.
+
+### Windows
 
 From the repository root, in PowerShell:
 
@@ -229,6 +265,7 @@ firmware's own sources together with a thin desktop platform layer:
 sim/
 ├── CMakeLists.txt        builds lvgl + ArduinoWebsockets + src/** + sim/src/**
 ├── build.ps1             Windows build/run helper (uses MSYS2 UCRT64)
+├── build.sh              macOS / Linux build/run helper
 ├── include/              desktop versions of Arduino/ESP32 headers (searched BEFORE include/)
 │   ├── Arduino.h, WString.h, Print.h, IPAddress.h   Arduino core subset
 │   ├── Preferences.h, FS.h, SD.h, SPI.h, Wire.h     storage / buses
@@ -254,7 +291,9 @@ Key points:
 - **Websockets.** ArduinoWebsockets only selects a TCP backend for ESP and
   Teensy boards, so `sim_ws_platform.h` is force-included (`gcc -include`)
   into every C++ file and supplies `WSDefaultTcpClient`, backed by
-  Winsock/BSD sockets in `sim/src/net.cpp`.
+  Winsock/BSD sockets in `sim/src/net.cpp`. On macOS/Linux `SIGPIPE` is
+  ignored so writing to a socket the controller already closed returns an
+  error (as on Windows) instead of killing the simulator.
 - **`-funsigned-char`** matches the ESP32 (Xtensa) compiler, where `char` is
   unsigned. The firmware relies on this, for example for FluidNC's realtime
   command bytes.
@@ -278,7 +317,7 @@ Key points:
 ### Building manually
 
 ```bash
-# from an MSYS2 UCRT64 shell, or with C:\msys64\ucrt64\bin first on PATH
+# macOS / Linux, or from an MSYS2 UCRT64 shell (or with C:\msys64\ucrt64\bin first on PATH) on Windows
 cmake -S sim -B sim/build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build sim/build
 sim/build/fluidtouch_sim --help
@@ -295,4 +334,6 @@ sim/build/fluidtouch_sim --help
 | CMake picks up a different gcc (Cygwin, Strawberry Perl, …) | Use `build.ps1`, which puts MSYS2 first on `PATH`, or run `.\sim\build.ps1 -Clean` |
 | `fluidnc.local` doesn't resolve | Check `ping fluidnc.local` from the same PC. If that fails too, use the IP address |
 | "Connection failed" | Check the port (80/81/82 depends on the FluidNC version) and that the PC can reach the controller |
-| UI looks stale after pulling changes | `.\sim\build.ps1 -Clean` |
+| UI looks stale after pulling changes | `.\sim\build.ps1 -Clean` (Windows) or `./sim/build.sh --clean` |
+| macOS: `Could not find a package configuration file provided by "SDL2"` | `brew install sdl2`, or pass `-DCMAKE_PREFIX_PATH=$(brew --prefix sdl2)` to `cmake` |
+| macOS: `xcrun: error: invalid active developer path` | Run `xcode-select --install` |

@@ -86,7 +86,7 @@ Detailed documentation is available in the [`docs/`](./docs/) folder:
 - **[Usage Instructions](./docs/usage.md)** - Operating instructions and workflows
 - **[Configuration](./docs/configuration.md)** - WiFi setup, machine configuration, and settings
 - **[Development Guide](./docs/development.md)** - Building, debugging, and contributing
-- **[Desktop Simulator](./sim/README.md)** - Run and develop the UI on your PC, connected to a real FluidNC controller
+- **[Desktop Simulator](./sim/README.md)** - Run and develop the UI on Windows, macOS or Linux, connected to a real FluidNC controller
 - **[3D Printed Case](./hardware/case/README.md)** and **[Stand](./hardware/stand/README.md)** - Print files, hardware list and assembly for the Advance display
 
 ---
