@@ -121,7 +121,7 @@ add_library(arduinowebsockets STATIC ${WS_SOURCES})
 target_include_directories(arduinowebsockets PUBLIC ${FT_INCLUDE_DIRS})
 target_compile_definitions(arduinowebsockets PUBLIC ${FT_DEFINES})
 target_compile_options(arduinowebsockets PRIVATE -w -funsigned-char
-    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${FT_CXX_FORCE_INCLUDE}>")
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include \"${FT_CXX_FORCE_INCLUDE}\">")
 
 # ---------------------------------------------------------------------------
 # mbedtls crypto (no TLS/X.509 needed)
@@ -160,7 +160,7 @@ target_compile_options(fluidtouch_sim PRIVATE
     -funsigned-char  # Xtensa (ESP32) char is unsigned; firmware relies on it
     -Wall -Wno-unused-variable -Wno-unused-function -Wno-format
     -Wno-unused-but-set-variable -Wno-missing-field-initializers
-    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${FT_CXX_FORCE_INCLUDE}>")
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include \"${FT_CXX_FORCE_INCLUDE}\">")
 target_link_libraries(fluidtouch_sim PRIVATE lvgl arduinowebsockets mbedcrypto SDL2::SDL2)
 
 # ESP-NOW link test against sim/tools/fake_fluidnc.py (see sim/test/espnow_link_test.cpp)
@@ -175,7 +175,7 @@ target_compile_definitions(espnow_link_test PRIVATE
     ${FT_DEFINES}
     SIM_DEFAULT_DATA_DIR="${SIM_DIR}/data")
 target_compile_options(espnow_link_test PRIVATE -funsigned-char -Wall -Wno-unused-function
-    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${FT_CXX_FORCE_INCLUDE}>")
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include \"${FT_CXX_FORCE_INCLUDE}\">")
 target_link_libraries(espnow_link_test PRIVATE mbedcrypto)
 
 # XModem sender test against an in-process FluidNC-like receiver (see sim/test/xmodem_sender_test.cpp)
@@ -187,7 +187,7 @@ add_executable(xmodem_sender_test
 target_include_directories(xmodem_sender_test PRIVATE ${FT_INCLUDE_DIRS})
 target_compile_definitions(xmodem_sender_test PRIVATE ${FT_DEFINES})
 target_compile_options(xmodem_sender_test PRIVATE -funsigned-char -Wall -Wno-unused-function
-    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${FT_CXX_FORCE_INCLUDE}>")
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include \"${FT_CXX_FORCE_INCLUDE}\">")
 
 if(WIN32)
     target_link_libraries(fluidtouch_sim PRIVATE ws2_32 iphlpapi)
