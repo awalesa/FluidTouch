@@ -1,4 +1,5 @@
 #include "ui/tabs/ui_tab_status.h"
+#include "ui/tabs/ui_tab_status_jog.h"
 #include "ui/tabs/settings/ui_tab_settings_jog.h"
 #include "ui/ui_theme.h"
 #include "ui/ui_common.h"
@@ -504,135 +505,9 @@ void UITabStatus::create(lv_obj_t *tab) {
         visible_axis_rows++;
     }
 
-    // MODAL STATES - Right column (labels at x=615, values at x=735)
-    lv_obj_t *modal_header = lv_label_create(tab);
-    lv_label_set_text(modal_header, "MODAL");
-    lv_obj_set_style_text_font(modal_header, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(modal_header, UITheme::TEXT_DISABLED, 0);
-    lv_obj_set_pos(modal_header, 615, 70);
-
-
-    int modalStart = 99;
-    int modalSpacing = 31;
-    int modalPosition = 0;
-    // PLANE
-    lv_obj_t *status_plane_label = lv_label_create(tab);
-    lv_label_set_text(status_plane_label, "PLANE");
-    lv_obj_set_style_text_font(status_plane_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(status_plane_label, UITheme::ACCENT_SECONDARY, 0);
-    lv_obj_set_pos(status_plane_label, 615, modalStart + (modalSpacing * modalPosition));
-    
-    lbl_modal_plane = lv_label_create(tab);
-    lv_label_set_text(lbl_modal_plane, "---");
-    lv_obj_set_style_text_font(lbl_modal_plane, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl_modal_plane, UITheme::UI_SECONDARY, 0);
-    lv_obj_set_pos(lbl_modal_plane, 735, modalStart + (modalSpacing * modalPosition));
-
-    modalPosition++;
-
-    // DIST
-    lv_obj_t *status_dist_label = lv_label_create(tab);
-    lv_label_set_text(status_dist_label, "DIST");
-    lv_obj_set_style_text_font(status_dist_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(status_dist_label, UITheme::ACCENT_SECONDARY, 0);
-    lv_obj_set_pos(status_dist_label, 615, modalStart + (modalSpacing * modalPosition));
-    
-    lbl_modal_dist = lv_label_create(tab);
-    lv_label_set_text(lbl_modal_dist, "---");
-    lv_obj_set_style_text_font(lbl_modal_dist, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl_modal_dist, UITheme::UI_SECONDARY, 0);
-    lv_obj_set_pos(lbl_modal_dist, 735, modalStart + (modalSpacing * modalPosition));
-
-    modalPosition++;
-
-    // UNITS
-    lv_obj_t *status_units_label = lv_label_create(tab);
-    lv_label_set_text(status_units_label, "UNITS");
-    lv_obj_set_style_text_font(status_units_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(status_units_label, UITheme::ACCENT_SECONDARY, 0);
-    lv_obj_set_pos(status_units_label, 615, modalStart + (modalSpacing * modalPosition));
-    
-    lbl_modal_units = lv_label_create(tab);
-    lv_label_set_text(lbl_modal_units, "---");
-    lv_obj_set_style_text_font(lbl_modal_units, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl_modal_units, UITheme::POS_WORK, 0);
-    lv_obj_set_pos(lbl_modal_units, 735, modalStart + (modalSpacing * modalPosition));
-
-    modalPosition++;
-
-    // MOTION
-    lv_obj_t *status_motion_label = lv_label_create(tab);
-    lv_label_set_text(status_motion_label, "MOTION");
-    lv_obj_set_style_text_font(status_motion_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(status_motion_label, UITheme::ACCENT_SECONDARY, 0);
-    lv_obj_set_pos(status_motion_label, 615, modalStart + (modalSpacing * modalPosition));
-    
-    lbl_modal_motion = lv_label_create(tab);
-    lv_label_set_text(lbl_modal_motion, "---");
-    lv_obj_set_style_text_font(lbl_modal_motion, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl_modal_motion, UITheme::UI_INFO, 0);
-    lv_obj_set_pos(lbl_modal_motion, 735, modalStart + (modalSpacing * modalPosition));
-
-    modalPosition++;
-
-    // FEED
-    lv_obj_t *status_feedrate_label = lv_label_create(tab);
-    lv_label_set_text(status_feedrate_label, "FEED");
-    lv_obj_set_style_text_font(status_feedrate_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(status_feedrate_label, UITheme::ACCENT_SECONDARY, 0);
-    lv_obj_set_pos(status_feedrate_label, 615, modalStart + (modalSpacing * modalPosition));
-    
-    lbl_modal_feedrate = lv_label_create(tab);
-    lv_label_set_text(lbl_modal_feedrate, "---");
-    lv_obj_set_style_text_font(lbl_modal_feedrate, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl_modal_feedrate, UITheme::UI_INFO, 0);
-    lv_obj_set_pos(lbl_modal_feedrate, 735, modalStart + (modalSpacing * modalPosition));
-
-    modalPosition++;
-
-    // SPINDLE
-    lv_obj_t *status_spindle_label = lv_label_create(tab);
-    lv_label_set_text(status_spindle_label, "SPINDLE");
-    lv_obj_set_style_text_font(status_spindle_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(status_spindle_label, UITheme::ACCENT_SECONDARY, 0);
-    lv_obj_set_pos(status_spindle_label, 615, modalStart + (modalSpacing * modalPosition));
-    
-    lbl_modal_spindle = lv_label_create(tab);
-    lv_label_set_text(lbl_modal_spindle, "---");
-    lv_obj_set_style_text_font(lbl_modal_spindle, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl_modal_spindle, UITheme::UI_INFO, 0);
-    lv_obj_set_pos(lbl_modal_spindle, 735, modalStart + (modalSpacing * modalPosition));
-
-    modalPosition++;
-
-    // COOLANT
-    lv_obj_t *status_coolant_label = lv_label_create(tab);
-    lv_label_set_text(status_coolant_label, "COOLANT");
-    lv_obj_set_style_text_font(status_coolant_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(status_coolant_label, UITheme::ACCENT_SECONDARY, 0);
-    lv_obj_set_pos(status_coolant_label, 615, modalStart + (modalSpacing * modalPosition));
-    
-    lbl_modal_coolant = lv_label_create(tab);
-    lv_label_set_text(lbl_modal_coolant, "---");
-    lv_obj_set_style_text_font(lbl_modal_coolant, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl_modal_coolant, UITheme::UI_INFO, 0);
-    coolant_base_y = modalStart + (modalSpacing * modalPosition);
-    lv_obj_set_pos(lbl_modal_coolant, 735, coolant_base_y);
-
-    modalPosition++;
-
-    // TOOL
-    lv_obj_t *status_tool_label = lv_label_create(tab);
-    lv_label_set_text(status_tool_label, "TOOL");
-    lv_obj_set_style_text_font(status_tool_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(status_tool_label, UITheme::ACCENT_SECONDARY, 0);
-    lv_obj_set_pos(status_tool_label, 615, modalStart + (modalSpacing * modalPosition));
-    
-    lbl_modal_tool = lv_label_create(tab);
-    lv_label_set_text(lbl_modal_tool, "---");
-    lv_obj_set_style_text_font(lbl_modal_tool, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl_modal_tool, UITheme::UI_WARNING, 0);
-    lv_obj_set_pos(lbl_modal_tool, 735, modalStart + (modalSpacing * modalPosition));
+    // Right column (x=615): one jog dial per axis instead of the MODAL list.
+    // The lbl_modal_* pointers stay null; updateModalStates() skips them.
+    UITabStatusJog::createDials(tab, 615, 70, 165, 270);
 
     // 315
 
@@ -708,6 +583,13 @@ void UITabStatus::create(lv_obj_t *tab) {
     // With fewer than 3 rows the box moves up beside the feed/spindle column,
     // so keep it to the width of the two position columns
     int message_width = visible_axis_rows < 3 ? 440 : 600;
+
+    // Quick buttons (go to work X0 Y0, home) share the bottom row with the
+    // message box, to the right of it, below the feed/spindle column
+    const int quick_w = 270;
+    const int quick_y = four_axis_rows ? 280 : 260;
+    message_width = 600 - quick_w - 10;
+    UITabStatusJog::createQuickButtons(tab, 600 - quick_w, quick_y, quick_w, 340 - quick_y);
 
     lv_obj_t *message_header = lv_label_create(tab);
     lv_label_set_text(message_header, "MESSAGE");
