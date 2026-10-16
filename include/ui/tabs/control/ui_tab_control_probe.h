@@ -9,6 +9,8 @@ public:
     static void updateResult(const char* message);
     static void updateResult(float x, float y, float z, bool success);
     static void updateProbe(bool triggered);
+    // Z- probe with the parameters set on this tab (used by the Status tab)
+    static void probeZ();
     
     // Keyboard support
     static void showKeyboard(lv_obj_t *ta);

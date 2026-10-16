@@ -1,5 +1,6 @@
 #include "ui/tabs/ui_tab_status_jog.h"
 #include "ui/tabs/settings/ui_tab_settings_jog.h"
+#include "ui/tabs/control/ui_tab_control_probe.h"
 #include "ui/ui_theme.h"
 #include "ui/ui_common.h"
 #include "ui/wcs_config.h"
@@ -249,27 +250,29 @@ void UITabStatusJog::onStepZClicked(lv_event_t *) {
 }
 
 // ---------------------------------------------------------------------------
-// Quick-action buttons
+// Action buttons
 // ---------------------------------------------------------------------------
-void UITabStatusJog::createQuickButtons(lv_obj_t *tab, int x, int y, int w, int h) {
-    const int gap = 8;
-    const int count = 3;
-    const int bw = (w - gap * (count - 1)) / count;
+void UITabStatusJog::createActionButtons(lv_obj_t *tab, int x, int y, int w, int h) {
+    const int gap = 10;
+    const int count = 4;
+    const int bh = (h - gap * (count - 1)) / count;
 
     struct Spec {
         const char *text;
         lv_color_t color;
         lv_event_cb_t cb;
     } specs[count] = {
-        // Colours and icons follow the Control > Actions tab ("Zero All", "Home All")
+        // In the order they're used: home, set work zero, return to it, touch off Z.
+        // Colours and icons follow the Control tab ("Home All", "Zero All", Probe "Z-")
+        {LV_SYMBOL_HOME " Home\nAll", UITheme::AXIS_XY, onHomeClicked},
         {LV_SYMBOL_GPS " Zero\nWork XY", UITheme::AXIS_XY, onZeroXYClicked},
         {LV_SYMBOL_PLAY " Work\nX0 Y0", UITheme::AXIS_XY, onGoToWorkZeroClicked},
-        {LV_SYMBOL_HOME " Home\nAll", UITheme::AXIS_XY, onHomeClicked},
+        {LV_SYMBOL_DOWN " Probe\nZ", UITheme::AXIS_Z, onProbeClicked},
     };
     for (int i = 0; i < count; i++) {
         lv_obj_t *btn = lv_button_create(tab);
-        lv_obj_set_size(btn, bw, h);
-        lv_obj_set_pos(btn, x + i * (bw + gap), y);
+        lv_obj_set_size(btn, w, bh);
+        lv_obj_set_pos(btn, x, y + i * (bh + gap));
         lv_obj_set_style_bg_color(btn, specs[i].color, LV_PART_MAIN);
         lv_obj_set_style_pad_all(btn, 2, 0);
         lv_obj_add_event_cb(btn, specs[i].cb, LV_EVENT_CLICKED, nullptr);
@@ -279,6 +282,16 @@ void UITabStatusJog::createQuickButtons(lv_obj_t *tab, int x, int y, int w, int 
         lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_center(lbl);
     }
+}
+
+void UITabStatusJog::onProbeClicked(lv_event_t *) {
+    if (!FluidNCClient::isConnected()) return;
+    if (FluidNCClient::getStatus().state != STATE_IDLE) {
+        Serial.println("[StatusJog] Probe ignored: machine not idle");
+        return;
+    }
+    // Same as Control > Probe > Z-, including the locked-WCS confirmation
+    UITabControlProbe::probeZ();
 }
 
 void UITabStatusJog::sendZeroXY() {

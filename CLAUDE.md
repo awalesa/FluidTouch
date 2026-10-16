@@ -43,9 +43,14 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   axis letter turns with the knob. Detents are batched into one
   `$J=G91` every 100 ms,
   max 20 per jog, nothing collected unless Idle/Jog. Feed from Jog settings
-- Bottom row next to a narrower message box: **Zero X Y** (`G10 L20 P0 X0 Y0`,
-  locked-WCS confirmation like the Control tab), **X0 Y0** (`G90 G0 X0 Y0`,
-  Idle only, Z untouched), **Home** (`$H`, Idle or Alarm)
+- Layout below the state row: three columns. Left: positions, message box
+  under them (440 wide). Middle (x 455, where FEED RATE / RAPID / SPINDLE
+  was; removed): four stacked action buttons in workflow order,
+  **Home All** (`$H`, Idle or Alarm), **Zero Work XY** (`G10 L20 P0 X0 Y0`,
+  locked-WCS confirmation like the Control tab), **Work X0 Y0**
+  (`G90 G0 X0 Y0`, Idle only, Z untouched), **Probe Z** (Control > Probe
+  "Z-" with that tab's parameters, Idle only, `UITabControlProbe::probeZ()`).
+  Right: the dials
 - Code: `src/ui/tabs/ui_tab_status_jog.cpp` + `include/ui/tabs/ui_tab_status_jog.h`;
   `ui_tab_status.cpp` only calls into it (kept small to ease upstream merges)
 
@@ -56,7 +61,7 @@ Non-G-code files are greyed out with no Run button. The upload folder
 browser still uses `$Files/ListGcode` (it only needs folders).
 
 Open question: knobs are ~70 px (~13 mm on the real panel). May need to be
-bigger on hardware, e.g. at the cost of the FEED/SPINDLE column.
+bigger on hardware.
 
 ## Where things are
 

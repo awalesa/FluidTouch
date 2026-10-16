@@ -283,6 +283,10 @@ void UITabControlProbe::probe_z_minus_handler(lv_event_t* e) {
     executeProbe('Z', '-');
 }
 
+void UITabControlProbe::probeZ() {
+    executeProbe('Z', '-');
+}
+
 void UITabControlProbe::executeProbe(char axis, char direction, bool checkWcsLock) {
     if (!FluidNCClient::isConnected()) {
         if (results_text) {

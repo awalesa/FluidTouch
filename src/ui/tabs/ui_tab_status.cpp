@@ -509,87 +509,20 @@ void UITabStatus::create(lv_obj_t *tab) {
     // The lbl_modal_* pointers stay null; updateModalStates() skips them.
     UITabStatusJog::createDials(tab, 615, 70, 165, 270);
 
-    // 315
+    // Middle column (x=455), in place of FEED RATE / RAPID / SPINDLE (not
+    // needed on the plasma): home, zero work XY, work X0 Y0, probe Z, stacked
+    // from the column headers down to the bottom like the dials beside them.
+    // The lbl_feed_* / lbl_spindle_* pointers stay null; their updates skip them.
+    UITabStatusJog::createActionButtons(tab, 455, 70, 145, 270);
 
-    // FEED RATE & SPINDLE - Third column (moved 20px left: 475→455)
-    lv_obj_t *status_feed_header = lv_label_create(tab);
-    lv_label_set_text(status_feed_header, "FEED RATE");
-    lv_obj_set_style_text_font(status_feed_header, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(status_feed_header, UITheme::TEXT_DISABLED, 0);
-    lv_obj_set_pos(status_feed_header, 455, 70);
-
-    lbl_feed_value = lv_label_create(tab);
-    lv_label_set_text(lbl_feed_value, "---");
-    lv_obj_set_style_text_font(lbl_feed_value, &lv_font_montserrat_32, 0);
-    lv_obj_set_style_text_color(lbl_feed_value, lv_color_white(), 0);
-    lv_obj_set_pos(lbl_feed_value, 455, 95);
-    
-    lbl_feed_override = lv_label_create(tab);
-    lv_label_set_text(lbl_feed_override, "---%");
-    lv_obj_set_style_text_font(lbl_feed_override, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_feed_override, UITheme::UI_INFO, 0);
-    lv_obj_set_pos(lbl_feed_override, 555, 70);  // Right next to value
-    
-    lbl_feed_units = lv_label_create(tab);
-    lv_label_set_text(lbl_feed_units, "mm/min");
-    lv_obj_set_style_text_font(lbl_feed_units, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_feed_units, UITheme::TEXT_DISABLED, 0);
-    lv_obj_set_pos(lbl_feed_units, 455, 129);  // Moved up 2px from 131
-
-    // RAPID OVERRIDE - Between feed and spindle
-    lv_obj_t *status_rapid_label = lv_label_create(tab);
-    lv_label_set_text(status_rapid_label, "RAPID");
-    lv_obj_set_style_text_font(status_rapid_label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(status_rapid_label, UITheme::TEXT_DISABLED, 0);
-    lv_obj_set_pos(status_rapid_label, 455, 147);
-    
-    lbl_rapid_override = lv_label_create(tab);
-    lv_label_set_text(lbl_rapid_override, "---%");
-    lv_obj_set_style_text_font(lbl_rapid_override, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_rapid_override, UITheme::UI_INFO, 0);
-    lv_obj_set_pos(lbl_rapid_override, 555, 147);  // Right aligned with percentage
-
-    lv_obj_t *status_speed_header = lv_label_create(tab);
-    lv_label_set_text(status_speed_header, "SPINDLE");
-    lv_obj_set_style_text_font(status_speed_header, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(status_speed_header, UITheme::TEXT_DISABLED, 0);
-    lv_obj_set_pos(status_speed_header, 455, 164);
-
-    lbl_spindle_value = lv_label_create(tab);
-    lv_label_set_text(lbl_spindle_value, "---");
-    lv_obj_set_style_text_font(lbl_spindle_value, &lv_font_montserrat_32, 0);
-    lv_obj_set_style_text_color(lbl_spindle_value, lv_color_white(), 0);
-    lv_obj_set_pos(lbl_spindle_value, 455, 185);
-    
-    lbl_spindle_override = lv_label_create(tab);
-    lv_label_set_text(lbl_spindle_override, "---%");
-    lv_obj_set_style_text_font(lbl_spindle_override, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_spindle_override, UITheme::UI_INFO, 0);
-    lv_obj_set_pos(lbl_spindle_override, 555, 164);  // Right next to value
-    
-    lbl_spindle_units = lv_label_create(tab);
-    lv_label_set_text(lbl_spindle_units, "RPM");
-    lv_obj_set_style_text_font(lbl_spindle_units, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_spindle_units, UITheme::TEXT_DISABLED, 0);
-    lv_obj_set_pos(lbl_spindle_units, 455, 222);  // Second line
-
-    // MESSAGE - Bottom section spanning columns 1-3
+    // MESSAGE - under the positions, as wide as the two position columns.
     // Position depends on how many axis rows are shown (4 rows = XYZA leaves
     // room for a shorter box only; fewer rows give the message more space)
     bool four_axis_rows = visible_axis_rows >= 4;
     int message_label_y = four_axis_rows ? 255 : 95 + visible_axis_rows * 45 + 5;  // Label position
     int message_y = four_axis_rows ? 280 : message_label_y + 25;  // Field position
     int message_height = four_axis_rows ? 60 : 340 - message_y;
-    // With fewer than 3 rows the box moves up beside the feed/spindle column,
-    // so keep it to the width of the two position columns
-    int message_width = visible_axis_rows < 3 ? 440 : 600;
-
-    // Quick buttons (zero X Y, go to work X0 Y0, home) share the bottom row with the
-    // message box, to the right of it, below the feed/spindle column
-    const int quick_w = 330;
-    const int quick_y = four_axis_rows ? 280 : 260;
-    message_width = 600 - quick_w - 10;
-    UITabStatusJog::createQuickButtons(tab, 600 - quick_w, quick_y, quick_w, 340 - quick_y);
+    int message_width = 440;
 
     lv_obj_t *message_header = lv_label_create(tab);
     lv_label_set_text(message_header, "MESSAGE");

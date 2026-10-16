@@ -3,8 +3,8 @@
 
 #include <lvgl.h>
 
-// Status tab additions: one jog dial per axis (X/Y/Z) plus quick
-// "zero X Y", "go to work X0 Y0" and "home ($H)" buttons.
+// Status tab additions: one jog dial per axis (X/Y/Z) plus a column of
+// action buttons: home ($H), zero work X Y, go to work X0 Y0, probe Z.
 //
 // Each dial works like a hand-wheel (MPG): turning it by one detent moves
 // the axis by the selected step. Detents are collected and sent as one
@@ -13,8 +13,9 @@ class UITabStatusJog {
 public:
     // Dials, stacked vertically, with XY and Z step selectors on top.
     static void createDials(lv_obj_t *tab, int x, int y, int w, int h);
-    // The three quick-action buttons, side by side.
-    static void createQuickButtons(lv_obj_t *tab, int x, int y, int w, int h);
+    // The four action buttons, stacked vertically. Probe Z runs
+    // Control > Probe "Z-" with that tab's parameters.
+    static void createActionButtons(lv_obj_t *tab, int x, int y, int w, int h);
 
 private:
     struct Dial {
@@ -56,6 +57,7 @@ private:
     static void sendZeroXY();
     static void onGoToWorkZeroClicked(lv_event_t *e);
     static void onHomeClicked(lv_event_t *e);
+    static void onProbeClicked(lv_event_t *e);
 };
 
 #endif
