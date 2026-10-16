@@ -60,6 +60,15 @@ static bool isGcodeFile(const std::string &name) {
     return false;
 }
 
+// State of the FluidNC file list request in flight. Reset for every request,
+// so a failed or late reply can't leak into the next one, and tied to the
+// storage it was made for, so it can't overwrite another storage's list
+// (e.g. clear the Display SD list after switching to it)
+static String list_json;
+static bool list_collecting = false;
+static uint32_t list_last_msg_ms = 0;
+static StorageSource list_storage = StorageSource::FLUIDNC_SD;
+
 // Check if Display SD card is available
 bool UITabFiles::isDisplaySDAvailable() {
     // First check card type
@@ -230,13 +239,24 @@ void UITabFiles::refreshFileList(const std::string &path) {
     // Clear previous file list
     file_names.clear();
     
+    list_json = "";
+    list_collecting = false;
+    list_last_msg_ms = millis();
+    list_storage = current_storage;
+
     // Register callback to receive JSON file list response
     FluidNCClient::setMessageCallback([](const char* message) {
         // Accumulate multi-line JSON responses
-        static String jsonBuffer;
-        static bool collecting = false;
-        static uint32_t lastMessageTime = 0;
-        
+        String &jsonBuffer = list_json;
+        bool &collecting = list_collecting;
+        uint32_t &lastMessageTime = list_last_msg_ms;
+
+        if (current_storage != list_storage) {
+            // Switched storage while waiting; this reply isn't for the shown list
+            FluidNCClient::clearMessageCallback();
+            return;
+        }
+
         String msg(message);
         // Remove only line endings (\r\n), not spaces - preserves trailing spaces in filenames
         while (msg.endsWith("\r") || msg.endsWith("\n")) {
@@ -345,11 +365,11 @@ void UITabFiles::refreshFileList(const std::string &path) {
         }
     });
     
-    // List every file, not only G-code ($Files/ListGcode hides the rest, so
-    // e.g. an uploaded settings backup looked like it had vanished)
-    const char *list_cmd = current_storage == StorageSource::FLUIDNC_FLASH ? "$LocalFS/ListJSON" : "$SD/ListJSON";
+    // Send JSON file list command for specified path. Only G-code files are
+    // listed; $SD/ListJSON (every file) gave "Error parsing file list" on a
+    // real controller, so it's back to $Files/ListGcode until that's understood
     char cmd[256];
-    snprintf(cmd, sizeof(cmd), "%s=%s\n", list_cmd, path.c_str());
+    snprintf(cmd, sizeof(cmd), "$Files/ListGcode=%s\n", path.c_str());
     FluidNCClient::sendCommand(cmd);
 }
 
@@ -746,8 +766,8 @@ static void delete_button_event_cb(lv_event_t *e) {
 }
 
 void UITabFiles::parseFileList(const std::string &response) {
-    // Parse FluidNC $SD/ListJSON / $LocalFS/ListJSON response
-    // Expected format: {"files":[{"name":"file.gcode","size":"12345"},...],"path":"/sd/",...}
+    // Parse FluidNC $Files/ListGcode JSON response
+    // Expected format: {"files":[{"name":"file.gcode","size":12345},...],"path":"/sd/"}
     file_names.clear();
     
     // Get current storage cache

@@ -70,11 +70,14 @@ tab change and from `updateFileProgress`), `UICommon::updateFeedSpindle()`
 is fed from `main.cpp`. Also fixed upstream's shadowed `lbl_wpos_label`
 local, which kept "WPos:" visible over the job progress.
 
-Files tab (also on `my-ui`): FluidNC SD / Flash lists come from
-`$SD/ListJSON` / `$LocalFS/ListJSON` instead of `$Files/ListGcode`, which
-hides every non-G-code file (an uploaded settings `.json` looked lost).
-Non-G-code files are greyed out with no Run button. The upload folder
-browser still uses `$Files/ListGcode` (it only needs folders).
+Files tab (also on `my-ui`): listing every file via `$SD/ListJSON` /
+`$LocalFS/ListJSON` was tried and reverted: on the owner's real controller it
+gave "Error parsing file list" (the fake server and FluidNC's current source
+looked fine; the controller's actual reply is still to be captured). Lists use
+`$Files/ListGcode` again, so non-G-code files (an uploaded settings `.json`)
+stay hidden. The list request state is now reset per request and tied to the
+storage it was made for: a failed or late reply used to leak into the next
+list or wipe the Display SD list (its Upload buttons "vanished").
 
 Open question: knobs are ~70 px (~13 mm on the real panel). May need to be
 bigger on hardware.
