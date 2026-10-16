@@ -11,7 +11,7 @@
 // $J=G91 jog every SEND_INTERVAL_MS, so a fast spin can't flood FluidNC.
 class UITabStatusJog {
 public:
-    // Dials, stacked vertically, with a step selector on top.
+    // Dials, stacked vertically, with XY and Z step selectors on top.
     static void createDials(lv_obj_t *tab, int x, int y, int w, int h);
     // The three quick-action buttons, side by side.
     static void createQuickButtons(lv_obj_t *tab, int x, int y, int w, int h);
@@ -36,16 +36,20 @@ private:
 
     static Dial dials[MAX_DIALS];
     static int dial_count;
-    static int step_index;
-    static lv_obj_t *lbl_step;
+    static int step_index_xy;
+    static int step_index_z;
+    static lv_obj_t *lbl_step_xy;
+    static lv_obj_t *lbl_step_z;
     static lv_timer_t *send_timer;
 
-    static float currentStep();
+    static float currentStep(char axis);
+    static void updateStepLabels();
     static void placeMarker(Dial &d);
     static bool jogAllowed();
 
     static void onDialEvent(lv_event_t *e);
-    static void onStepClicked(lv_event_t *e);
+    static void onStepXYClicked(lv_event_t *e);
+    static void onStepZClicked(lv_event_t *e);
     static void onSendTimer(lv_timer_t *t);
     static void onZeroXYClicked(lv_event_t *e);
     static void sendZeroXY();

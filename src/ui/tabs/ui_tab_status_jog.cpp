@@ -10,14 +10,21 @@
 
 UITabStatusJog::Dial UITabStatusJog::dials[UITabStatusJog::MAX_DIALS] = {};
 int UITabStatusJog::dial_count = 0;
-int UITabStatusJog::step_index = 1;  // 1.0 by default
-lv_obj_t *UITabStatusJog::lbl_step = nullptr;
+int UITabStatusJog::step_index_xy = 1;  // 1 by default
+int UITabStatusJog::step_index_z = 0;   // 0.1 by default
+lv_obj_t *UITabStatusJog::lbl_step_xy = nullptr;
+lv_obj_t *UITabStatusJog::lbl_step_z = nullptr;
 lv_timer_t *UITabStatusJog::send_timer = nullptr;
 
 namespace {
-const float STEPS[] = {0.1f, 1.0f, 10.0f};
-const char *const STEP_LABELS[] = {"0.1", "1", "10"};
-const int STEP_COUNT = sizeof(STEPS) / sizeof(STEPS[0]);
+const float STEPS_XY[] = {0.1f, 1.0f, 10.0f};
+const char *const STEP_LABELS_XY[] = {"0.1", "1", "10"};
+const int STEP_COUNT_XY = sizeof(STEPS_XY) / sizeof(STEPS_XY[0]);
+
+// Z has a short travel (~40 mm on the plasma), so no 10 mm step
+const float STEPS_Z[] = {0.1f, 0.5f, 1.0f};
+const char *const STEP_LABELS_Z[] = {"0.1", "0.5", "1"};
+const int STEP_COUNT_Z = sizeof(STEPS_Z) / sizeof(STEPS_Z[0]);
 
 // Touches closer than this to the knob centre give a jumpy angle, so they're ignored
 const int MIN_RADIUS_PX = 10;
@@ -37,7 +44,21 @@ float wrap180(float deg) {
 }
 } // namespace
 
-float UITabStatusJog::currentStep() { return STEPS[step_index]; }
+float UITabStatusJog::currentStep(char axis) {
+    return axis == 'Z' ? STEPS_Z[step_index_z] : STEPS_XY[step_index_xy];
+}
+
+void UITabStatusJog::updateStepLabels() {
+    char buf[24];
+    if (lbl_step_xy) {
+        snprintf(buf, sizeof(buf), "XY %s", STEP_LABELS_XY[step_index_xy]);
+        lv_label_set_text(lbl_step_xy, buf);
+    }
+    if (lbl_step_z) {
+        snprintf(buf, sizeof(buf), "Z %s", STEP_LABELS_Z[step_index_z]);
+        lv_label_set_text(lbl_step_z, buf);
+    }
+}
 
 bool UITabStatusJog::jogAllowed() {
     if (!FluidNCClient::isConnected()) return false;
@@ -49,22 +70,26 @@ bool UITabStatusJog::jogAllowed() {
 // Dials
 // ---------------------------------------------------------------------------
 void UITabStatusJog::createDials(lv_obj_t *tab, int x, int y, int w, int h) {
-    // Step selector across the top of the column
-    const int step_h = 28;
-    lv_obj_t *btn_step = lv_button_create(tab);
-    lv_obj_set_size(btn_step, w, step_h);
-    lv_obj_set_pos(btn_step, x, y);
-    lv_obj_set_style_bg_color(btn_step, UITheme::BG_BUTTON, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(btn_step, 0, 0);
-    lv_obj_set_ext_click_area(btn_step, 8);
-    lv_obj_add_event_cb(btn_step, onStepClicked, LV_EVENT_CLICKED, nullptr);
-    lbl_step = lv_label_create(btn_step);
-    lv_obj_set_style_text_font(lbl_step, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_step, UITheme::POS_MODAL, 0);
-    lv_obj_center(lbl_step);
-    char buf[24];
-    snprintf(buf, sizeof(buf), "Step %s", STEP_LABELS[step_index]);
-    lv_label_set_text(lbl_step, buf);
+    // Step selectors across the top of the column: XY on the left, Z on the right
+    const int step_h = 28, step_gap = 6;
+    const int step_w = (w - step_gap) / 2;
+    lv_obj_t **labels[] = {&lbl_step_xy, &lbl_step_z};
+    lv_event_cb_t cbs[] = {onStepXYClicked, onStepZClicked};
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *btn = lv_button_create(tab);
+        lv_obj_set_size(btn, step_w, step_h);
+        lv_obj_set_pos(btn, x + i * (w - step_w), y);
+        lv_obj_set_style_bg_color(btn, UITheme::BG_BUTTON, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(btn, 0, 0);
+        lv_obj_set_ext_click_area(btn, 4);
+        lv_obj_add_event_cb(btn, cbs[i], LV_EVENT_CLICKED, nullptr);
+        lv_obj_t *lbl = lv_label_create(btn);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(lbl, i == 0 ? UITheme::AXIS_XY : UITheme::AXIS_Z, 0);
+        lv_obj_center(lbl);
+        *labels[i] = lbl;
+    }
+    updateStepLabels();
 
     // One dial per enabled linear axis
     dial_count = 0;
@@ -202,17 +227,20 @@ void UITabStatusJog::onSendTimer(lv_timer_t *) {
         // screwing down; X and Y: clockwise = +
         if (d.axis == 'Z') detents = -detents;
         char cmd[48];
-        snprintf(cmd, sizeof(cmd), "$J=G91 %c%.3f F%d\n", d.axis, detents * currentStep(), feed);
+        snprintf(cmd, sizeof(cmd), "$J=G91 %c%.3f F%d\n", d.axis, detents * currentStep(d.axis), feed);
         Serial.printf("[StatusJog] %s", cmd);
         FluidNCClient::sendCommand(cmd);
     }
 }
 
-void UITabStatusJog::onStepClicked(lv_event_t *) {
-    step_index = (step_index + 1) % STEP_COUNT;
-    char buf[24];
-    snprintf(buf, sizeof(buf), "Step %s", STEP_LABELS[step_index]);
-    lv_label_set_text(lbl_step, buf);
+void UITabStatusJog::onStepXYClicked(lv_event_t *) {
+    step_index_xy = (step_index_xy + 1) % STEP_COUNT_XY;
+    updateStepLabels();
+}
+
+void UITabStatusJog::onStepZClicked(lv_event_t *) {
+    step_index_z = (step_index_z + 1) % STEP_COUNT_Z;
+    updateStepLabels();
 }
 
 // ---------------------------------------------------------------------------
