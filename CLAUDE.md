@@ -35,8 +35,9 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
 ## UI changes on `my-ui` (Status tab)
 
 - MODAL list in the right column removed; the WCS (G54) button stays
-- Right column: three jog dials X / Y / Z (axis letter on the knob), step
-  button above them cycles 0.1 / 1 / 10. Hand-wheel behaviour: 12 detents per
+- Right column: three jog dials X / Y / Z (axis letter on the knob), two step
+  buttons above them: XY cycles 0.1 / 1 / 10 (default 1), Z cycles
+  0.1 / 0.5 / 1 (default 0.1). Hand-wheel behaviour: 12 detents per
   turn, clockwise = + for X/Y but − for Z (torch down towards the material;
   Z0 is on the material, ~40 at the top). Detents are batched into one
   `$J=G91` every 100 ms,
@@ -46,6 +47,12 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   Idle only, Z untouched), **Home** (`$H`, Idle or Alarm)
 - Code: `src/ui/tabs/ui_tab_status_jog.cpp` + `include/ui/tabs/ui_tab_status_jog.h`;
   `ui_tab_status.cpp` only calls into it (kept small to ease upstream merges)
+
+Files tab (also on `my-ui`): FluidNC SD / Flash lists come from
+`$SD/ListJSON` / `$LocalFS/ListJSON` instead of `$Files/ListGcode`, which
+hides every non-G-code file (an uploaded settings `.json` looked lost).
+Non-G-code files are greyed out with no Run button. The upload folder
+browser still uses `$Files/ListGcode` (it only needs folders).
 
 Open question: knobs are ~70 px (~13 mm on the real panel). May need to be
 bigger on hardware, e.g. at the cost of the FEED/SPINDLE column.

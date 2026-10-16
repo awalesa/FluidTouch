@@ -46,6 +46,20 @@ static UITabFiles::StorageCache* getCurrentCache() {
     }
 }
 
+// G-code extensions FluidNC itself recognises (Channel::is_visible), so the
+// list shows the same files as runnable that $Files/ListGcode would
+static bool isGcodeFile(const std::string &name) {
+    size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = name.substr(dot + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+    static const char *const EXTS[] = {"g", "gc", "gco", "gcode", "nc", "ngc", "ncc", "txt", "cnc", "tap"};
+    for (const char *e : EXTS) {
+        if (ext == e) return true;
+    }
+    return false;
+}
+
 // Check if Display SD card is available
 bool UITabFiles::isDisplaySDAvailable() {
     // First check card type
@@ -252,6 +266,23 @@ void UITabFiles::refreshFileList(const std::string &path) {
             return;
         }
 
+        // $SD/ListJSON and $LocalFS/ListJSON report a missing folder or volume
+        // as an error line instead of an "error" member in the JSON
+        if (msg.startsWith("error:")) {
+            Serial.printf("[Files] Listing failed: %s\n", msg.c_str());
+            jsonBuffer = "";
+            collecting = false;
+            FluidNCClient::clearMessageCallback();
+            getCurrentCache()->file_list.clear();
+            file_names.clear();
+            updateFileListUI();
+            if (status_label) {
+                lv_label_set_text(status_label, "Error: cannot open folder");
+                lv_obj_set_style_text_color(status_label, UITheme::STATE_ALARM, 0);
+            }
+            return;
+        }
+
         // Detect end of JSON response (ok line) - check this BEFORE printing/processing.
         // FluidNC v4 (port 80) sends the response in ~100 byte chunks and appends the
         // terminating "ok" to the last chunk ("...}\nok") rather than sending it on its
@@ -314,9 +345,11 @@ void UITabFiles::refreshFileList(const std::string &path) {
         }
     });
     
-    // Send JSON file list command for specified path
+    // List every file, not only G-code ($Files/ListGcode hides the rest, so
+    // e.g. an uploaded settings backup looked like it had vanished)
+    const char *list_cmd = current_storage == StorageSource::FLUIDNC_FLASH ? "$LocalFS/ListJSON" : "$SD/ListJSON";
     char cmd[256];
-    snprintf(cmd, sizeof(cmd), "$Files/ListGcode=%s\n", path.c_str());
+    snprintf(cmd, sizeof(cmd), "%s=%s\n", list_cmd, path.c_str());
     FluidNCClient::sendCommand(cmd);
 }
 
@@ -713,8 +746,8 @@ static void delete_button_event_cb(lv_event_t *e) {
 }
 
 void UITabFiles::parseFileList(const std::string &response) {
-    // Parse FluidNC $Files/ListGcode JSON response
-    // Expected format: {"files":[{"name":"file.gcode","size":12345},...],"path":"/sd/"}
+    // Parse FluidNC $SD/ListJSON / $LocalFS/ListJSON response
+    // Expected format: {"files":[{"name":"file.gcode","size":"12345"},...],"path":"/sd/",...}
     file_names.clear();
     
     // Get current storage cache
@@ -783,6 +816,12 @@ void UITabFiles::parseFileList(const std::string &response) {
             }
             
             bool is_dir = (filesize == -1);
+
+            // ListJSON returns everything; skip what $Files/ListGcode hid
+            // (dot files, the Windows index folder)
+            if (filename[0] == '.' || strcmp(filename, "System Volume Information") == 0) {
+                continue;
+            }
             
             file_names.push_back(filename);
             cache->file_list.push_back({filename, filesize, is_dir});
@@ -908,7 +947,10 @@ void UITabFiles::updateFileListUI() {
             lv_obj_set_style_text_color(lbl_filename, UITheme::ACCENT_SECONDARY, 0);
         } else {
             lv_label_set_text(lbl_filename, file.name.c_str());
-            lv_obj_set_style_text_color(lbl_filename, lv_color_white(), 0);
+            // Non-G-code files on FluidNC (settings backups, config.yaml) are
+            // shown greyed out and can't be run
+            bool runnable = current_storage == StorageSource::DISPLAY_SD || isGcodeFile(file.name);
+            lv_obj_set_style_text_color(lbl_filename, runnable ? lv_color_white() : UITheme::TEXT_DISABLED, 0);
         }
         lv_obj_set_style_text_font(lbl_filename, &lv_font_montserrat_20, 0);
         lv_obj_align(lbl_filename, LV_ALIGN_LEFT_MID, 5, 0);
@@ -964,18 +1006,20 @@ void UITabFiles::updateFileListUI() {
                 lv_obj_set_style_text_font(lbl_delete, &lv_font_montserrat_18, 0);
                 lv_obj_center(lbl_delete);
                 
-                // Play button (for FluidNC files)
-                lv_obj_t *btn_play = lv_button_create(file_row);
-                lv_obj_set_size(btn_play, 70, 38);
-                lv_obj_align(btn_play, LV_ALIGN_RIGHT_MID, -5, 0);
-                lv_obj_set_style_bg_color(btn_play, UITheme::BTN_PLAY, 0);
-                lv_obj_set_style_radius(btn_play, 3, 0);
-                lv_obj_add_event_cb(btn_play, play_button_event_cb, LV_EVENT_CLICKED, filenames_storage[i]);
-                
-                lv_obj_t *lbl_play = lv_label_create(btn_play);
-                lv_label_set_text(lbl_play, LV_SYMBOL_PLAY);
-                lv_obj_set_style_text_font(lbl_play, &lv_font_montserrat_18, 0);
-                lv_obj_center(lbl_play);
+                // Play button (for FluidNC G-code files only)
+                if (isGcodeFile(file.name)) {
+                    lv_obj_t *btn_play = lv_button_create(file_row);
+                    lv_obj_set_size(btn_play, 70, 38);
+                    lv_obj_align(btn_play, LV_ALIGN_RIGHT_MID, -5, 0);
+                    lv_obj_set_style_bg_color(btn_play, UITheme::BTN_PLAY, 0);
+                    lv_obj_set_style_radius(btn_play, 3, 0);
+                    lv_obj_add_event_cb(btn_play, play_button_event_cb, LV_EVENT_CLICKED, filenames_storage[i]);
+
+                    lv_obj_t *lbl_play = lv_label_create(btn_play);
+                    lv_label_set_text(lbl_play, LV_SYMBOL_PLAY);
+                    lv_obj_set_style_text_font(lbl_play, &lv_font_montserrat_18, 0);
+                    lv_obj_center(lbl_play);
+                }
             }
         }  // End of if (!file.is_directory)
     }  // End of for loop
