@@ -4,6 +4,7 @@
 #include "ui/ui_theme.h"
 #include "ui/ui_common.h"
 #include "ui/wcs_config.h"
+#include "ui/work_zero.h"
 #include "network/fluidnc_client.h"
 #include <Arduino.h>
 #include <math.h>
@@ -447,8 +448,9 @@ lv_color_t UITabStatusJog::backgroundColor(lv_obj_t *obj) {
 // Shows the active work coordinate system (G54...) down the frame's right side
 void UITabStatusJog::updateWcsLabel() {
     if (!lbl_wcs_frame) return;
-    const char *wcs = FluidNCClient::getStatus().modal_wcs;
-    if (!wcs[0]) wcs = "G54";
+    // "---" when not connected (or not reported yet), like the WCS button
+    const char *wcs = FluidNCClient::isConnected() ? FluidNCClient::getStatus().modal_wcs : "---";
+    if (!wcs[0]) wcs = "---";
     if (strcmp(wcs, wcs_shown) == 0) return;
     strncpy(wcs_shown, wcs, sizeof(wcs_shown) - 1);
     wcs_shown[sizeof(wcs_shown) - 1] = '\0';
@@ -467,20 +469,17 @@ void UITabStatusJog::onProbeClicked(lv_event_t *) {
 
 // axes: "XY" or "Z"; disabled axes are left out
 void UITabStatusJog::sendZero(const char *axes) {
-    char words[16] = "";
+    char enabled_axes[4] = "";
     for (const char *a = axes; *a; a++) {
         bool enabled = (*a == 'X') ? UICommon::isXAxisEnabled()
                      : (*a == 'Y') ? UICommon::isYAxisEnabled()
                                    : UICommon::isZAxisEnabled();
         if (!enabled) continue;
-        size_t n = strlen(words);
-        snprintf(words + n, sizeof(words) - n, " %c0", *a);
+        size_t n = strlen(enabled_axes);
+        enabled_axes[n] = *a;
+        enabled_axes[n + 1] = '\0';
     }
-    if (!words[0]) return;
-    char cmd[32];
-    snprintf(cmd, sizeof(cmd), "G10 L20 P0%s\n", words);
-    Serial.printf("[StatusJog] Zero %s: %s", axes, cmd);
-    FluidNCClient::sendCommand(cmd);
+    if (enabled_axes[0]) WorkZero::zero(enabled_axes);
 }
 
 void UITabStatusJog::zeroAxes(const char *axes) {

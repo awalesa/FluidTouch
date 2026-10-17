@@ -2,6 +2,7 @@
 #include "ui/ui_theme.h"
 #include "ui/ui_common.h"
 #include "ui/wcs_config.h"
+#include "ui/work_zero.h"
 #include "network/fluidnc_client.h"
 #include "config.h"
 
@@ -377,13 +378,13 @@ void UITabControlActions::onZeroXClicked(lv_event_t *e) {
         // Show lock confirmation dialog
         UICommon::showWCSLockDialog(status.modal_wcs, wcs_name, [](lv_event_t *e) {
             Serial.println("[Actions] Confirmed Zero X on locked WCS");
-            FluidNCClient::sendCommand("G10 L20 P0 X0\n");
+            WorkZero::zero("X");
         });
         return;
     }
     
     Serial.println("[Actions] Sending Zero X command (G10 L20 P0 X0)");
-    FluidNCClient::sendCommand("G10 L20 P0 X0\n");
+    WorkZero::zero("X");
 }
 
 void UITabControlActions::onZeroYClicked(lv_event_t *e) {
@@ -403,13 +404,13 @@ void UITabControlActions::onZeroYClicked(lv_event_t *e) {
         // Show lock confirmation dialog
         UICommon::showWCSLockDialog(status.modal_wcs, wcs_name, [](lv_event_t *e) {
             Serial.println("[Actions] Confirmed Zero Y on locked WCS");
-            FluidNCClient::sendCommand("G10 L20 P0 Y0\n");
+            WorkZero::zero("Y");
         });
         return;
     }
     
     Serial.println("[Actions] Sending Zero Y command (G10 L20 P0 Y0)");
-    FluidNCClient::sendCommand("G10 L20 P0 Y0\n");
+    WorkZero::zero("Y");
 }
 
 void UITabControlActions::onZeroZClicked(lv_event_t *e) {
@@ -429,13 +430,13 @@ void UITabControlActions::onZeroZClicked(lv_event_t *e) {
         // Show lock confirmation dialog
         UICommon::showWCSLockDialog(status.modal_wcs, wcs_name, [](lv_event_t *e) {
             Serial.println("[Actions] Confirmed Zero Z on locked WCS");
-            FluidNCClient::sendCommand("G10 L20 P0 Z0\n");
+            WorkZero::zero("Z");
         });
         return;
     }
     
     Serial.println("[Actions] Sending Zero Z command (G10 L20 P0 Z0)");
-    FluidNCClient::sendCommand("G10 L20 P0 Z0\n");
+    WorkZero::zero("Z");
 }
 
 void UITabControlActions::onZeroAClicked(lv_event_t *e) {
@@ -455,13 +456,13 @@ void UITabControlActions::onZeroAClicked(lv_event_t *e) {
         // Show lock confirmation dialog
         UICommon::showWCSLockDialog(status.modal_wcs, wcs_name, [](lv_event_t *e) {
             Serial.println("[Actions] Confirmed Zero A on locked WCS");
-            FluidNCClient::sendCommand("G10 L20 P0 A0\n");
+            WorkZero::zero("A");
         });
         return;
     }
 
     Serial.println("[Actions] Sending Zero A command (G10 L20 P0 A0)");
-    FluidNCClient::sendCommand("G10 L20 P0 A0\n");
+    WorkZero::zero("A");
 }
 
 void UITabControlActions::onZeroAllClicked(lv_event_t *e) {
@@ -482,9 +483,9 @@ void UITabControlActions::onZeroAllClicked(lv_event_t *e) {
         UICommon::showWCSLockDialog(status.modal_wcs, wcs_name, [](lv_event_t *e) {
             Serial.println("[Actions] Confirmed Zero All on locked WCS");
             if (UICommon::isAAxisEnabled()) {
-                FluidNCClient::sendCommand("G10 L20 P0 X0 Y0 Z0 A0\n");
+                WorkZero::zero("XYZA");
             } else {
-                FluidNCClient::sendCommand("G10 L20 P0 X0 Y0 Z0\n");
+                WorkZero::zero("XYZ");
             }
         });
         return;
@@ -492,10 +493,10 @@ void UITabControlActions::onZeroAllClicked(lv_event_t *e) {
 
     if (UICommon::isAAxisEnabled()) {
         Serial.println("[Actions] Sending Zero All command (G10 L20 P0 X0 Y0 Z0 A0)");
-        FluidNCClient::sendCommand("G10 L20 P0 X0 Y0 Z0 A0\n");
+        WorkZero::zero("XYZA");
     } else {
         Serial.println("[Actions] Sending Zero All command (G10 L20 P0 X0 Y0 Z0)");
-        FluidNCClient::sendCommand("G10 L20 P0 X0 Y0 Z0\n");
+        WorkZero::zero("XYZ");
     }
 }
 

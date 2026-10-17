@@ -76,7 +76,8 @@ checkout used to live under a path with spaces, `.../Plasma CNC/...`).
   WCS button); the active WCS (G54...) sits on the frame's right border like
   a dimension line: turned sideways (reads top to bottom), centred on the
   line, with a gap cut in the border (a strip in the background colour, taken
-  from the first opaque ancestor). Refreshed every 250 ms. Middle column is
+  from the first opaque ancestor). Refreshed every 250 ms; "---" while
+  disconnected, like the WCS button. Middle column is
   x 452-619; all the small buttons are the same size, Home All as wide as
   the pairs, and every row and pair has the same 10 px gap; the frame's
   top and bottom lines run through the middle of the gaps around the two
@@ -96,6 +97,16 @@ is fed from `main.cpp`. Also fixed upstream's shadowed `lbl_wpos_label`
 local, which kept "WPos:" visible over the job progress. The machine line on the right uses a
 loop-arrows icon, LV_SYMBOL_LOOP (was the same WiFi/USB icon as the
 link line under it; a gear read as "settings").
+
+Work zero (also on `my-ui`, every zero button: Status, Control > Actions
+X/Y/Z/A/All, Main tab): `WorkZero::zero()` in `src/ui/work_zero.cpp`.
+`G10 L20 P0 X0` zeroes the planned (parser) position, but the axis stands on
+the nearest motor step, so WPos could read 0.003 / -0.005 (more often since
+the continuous jog dials). After the G10, once Idle with a fresh report, any
+leftover under 0.05 mm is zeroed with a second `G10 L20 P0 X<-wpos>`. Chosen
+over `G10 L2 P<n> X<mpos>` because it stays right with a G92 offset active.
+Fake server: `--steps-per-mm 80` rounds reported positions to steps like real
+hardware, which reproduces it.
 
 Files tab (also on `my-ui`): listing every file via `$SD/ListJSON` /
 `$LocalFS/ListJSON` was tried and reverted: on the owner's real controller it

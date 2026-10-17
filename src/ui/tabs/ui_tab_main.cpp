@@ -2,6 +2,7 @@
 #include "ui/ui_theme.h"
 #include "ui/ui_common.h"
 #include "ui/wcs_config.h"
+#include "ui/work_zero.h"
 #include "ui/tabs/settings/ui_tab_settings_jog.h"
 #include "ui/machine_config.h"
 #include "network/fluidnc_client.h"
@@ -837,13 +838,13 @@ void UITabMain::onZeroXClicked(lv_event_t *e) {
         Serial.printf("[Main] WCS %s is locked, showing confirmation\n", status.modal_wcs);
         UICommon::showWCSLockDialog(status.modal_wcs, wcs_name, [](lv_event_t *e) {
             Serial.println("[Main] Confirmed Zero X on locked WCS");
-            FluidNCClient::sendCommand("G10 L20 P0 X0\n");
+            WorkZero::zero("X");
         });
         return;
     }
 
     Serial.println("[Main] Sending Zero X command (G10 L20 P0 X0)");
-    FluidNCClient::sendCommand("G10 L20 P0 X0\n");
+    WorkZero::zero("X");
 }
 
 void UITabMain::onUnlockClicked(lv_event_t *e) {
