@@ -42,7 +42,11 @@ AXES = "XYZA"
 
 
 class Machine:
-    def __init__(self):
+    def __init__(self, steps_per_mm=0.0):
+        # mpos is where G-code put the axes (the parser position). With
+        # steps_per_mm set, reports show it rounded to whole motor steps like
+        # a real machine, so G10 L20 leaves the small offset seen on hardware
+        self.steps_per_mm = steps_per_mm
         self.state = "Idle"
         self.mpos = [0.0, 0.0, 0.0, 0.0]
         self.wco = [0.0, 0.0, 0.0, 0.0]
@@ -59,7 +63,9 @@ class Machine:
 
     def status(self):
         self.tick()
-        mpos = ",".join(f"{v:.3f}" for v in self.mpos)
+        spm = self.steps_per_mm
+        actual = [round(v * spm) / spm for v in self.mpos] if spm > 0 else self.mpos
+        mpos = ",".join(f"{v:.3f}" for v in actual)
         wco = ",".join(f"{v:.3f}" for v in self.wco)
         pins = self.limits + ("P" if self.probe else "")
         report = (f"<{self.state}|MPos:{mpos}|FS:0,0|WCO:{wco}"
@@ -763,8 +769,10 @@ async def main():
                                                                "fake_espnow_pairings.json"),
                         help="file that remembers paired pendants ('' = don't save)")
     parser.add_argument("--hostname", default="fakefluidnc")
+    parser.add_argument("--steps-per-mm", type=float, default=0,
+                        help="report positions rounded to motor steps (e.g. 80), like real hardware")
     args = parser.parse_args()
-    machine = Machine()
+    machine = Machine(args.steps_per_mm)
     server = await asyncio.start_server(lambda r, w: handle_client(r, w, machine, args.sd), args.host, args.port)
     print(f"Fake FluidNC listening on ws://{args.host}:{args.port}/ (Ctrl+C to stop)")
     if args.espnow_port:

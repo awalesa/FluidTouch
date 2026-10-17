@@ -152,7 +152,12 @@ jogging, homing, zeroing, overrides, hold/resume and file listing.
 ```powershell
 python sim\tools\fake_fluidnc.py --port 81              # sample file list
 python sim\tools\fake_fluidnc.py --port 81 --sd D:\gcode  # serve a real folder
+python sim\tools\fake_fluidnc.py --port 81 --steps-per-mm 80  # report positions in motor steps
 ```
+
+`--steps-per-mm` rounds the reported positions to whole motor steps, as real
+hardware does. It shows the small offset `G10 L20` can leave after a move by
+a fraction of a step (WPos 0.003 instead of 0.000).
 
 Add a machine with URL `127.0.0.1` and the same port. Windows Firewall may
 ask for permission the first time. You can drive test states from the
