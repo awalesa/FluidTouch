@@ -150,9 +150,15 @@ class Session:
         self.out((line + "\n").encode())
 
     async def auto_report(self):
+        # Like FluidNC: every interval while moving, but while idle only when
+        # something in the report changed (state, position, offsets, pins)
+        last = None
         while True:
             if self.report_interval:
-                self.send(self.m.status())
+                report = self.m.status()
+                if report != last or not report.startswith("<Idle"):
+                    self.send(report)
+                    last = report
                 await asyncio.sleep(self.report_interval / 1000)
             else:
                 await asyncio.sleep(0.1)
