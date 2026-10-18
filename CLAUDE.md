@@ -21,6 +21,8 @@ brew install sdl2 cmake ninja      # once; Xcode Command Line Tools needed
 ./sim/build.sh --run               # incremental build + launch
 ./sim/build.sh --clean --run       # after moving the folder or CMake changes
 python3 sim/tools/fake_fluidnc.py --port 81   # fake controller, in a second terminal
+./sim/sim_run.sh                   # or both at once: fake on 81 + simulator
+./sim/sim_run.sh --build -- --steps-per-mm 80   # build first, extra fake options
 ```
 
 In the simulator add a machine: URL `127.0.0.1`, port `81`, any non-empty
@@ -102,11 +104,14 @@ Work zero (also on `my-ui`, every zero button: Status, Control > Actions
 X/Y/Z/A/All, Main tab): `WorkZero::zero()` in `src/ui/work_zero.cpp`.
 `G10 L20 P0 X0` zeroes the planned (parser) position, but the axis stands on
 the nearest motor step, so WPos could read 0.003 / -0.005 (more often since
-the continuous jog dials). After the G10, once Idle with a fresh report, any
-leftover under 0.05 mm is zeroed with a second `G10 L20 P0 X<-wpos>`. Chosen
+the continuous jog dials). After the G10 it sends `?` (while Idle FluidNC
+only reports on changes, so waiting for a periodic report never worked on
+real hardware) and, from the first report after that, zeroes any leftover
+under 0.05 mm with a second `G10 L20 P0 X<-wpos>`. Chosen
 over `G10 L2 P<n> X<mpos>` because it stays right with a G92 offset active.
 Fake server: `--steps-per-mm 80` rounds reported positions to steps like real
-hardware, which reproduces it.
+hardware, which reproduces it; like FluidNC it auto-reports while Idle only
+when the report changes.
 
 Files tab (also on `my-ui`): listing every file via `$SD/ListJSON` /
 `$LocalFS/ListJSON` was tried and reverted: on the owner's real controller it

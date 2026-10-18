@@ -7,6 +7,8 @@
 
 char WorkZero::pending_axes[8] = "";
 uint32_t WorkZero::sent_ms = 0;
+uint32_t WorkZero::next_query_ms = 0;
+uint32_t WorkZero::query_ms = 0;
 lv_timer_t *WorkZero::check_timer = nullptr;
 
 void WorkZero::zero(const char *axes) {
@@ -22,17 +24,31 @@ void WorkZero::zero(const char *axes) {
     strncpy(pending_axes, axes, sizeof(pending_axes) - 1);
     pending_axes[sizeof(pending_axes) - 1] = '\0';
     sent_ms = millis();
-    if (!check_timer) check_timer = lv_timer_create(onCheck, 100, nullptr);
+    next_query_ms = sent_ms + QUERY_DELAY_MS;
+    if (!check_timer) check_timer = lv_timer_create(onCheck, 50, nullptr);
 }
 
 void WorkZero::onCheck(lv_timer_t *) {
     uint32_t now = millis();
     const FluidNCStatus &s = FluidNCClient::getStatus();
     bool done = !FluidNCClient::isConnected() || now - sent_ms > GIVE_UP_MS;
-    // Wait for the machine to stand still and for a report made after the G10
-    if (!done && (s.state != STATE_IDLE || (int32_t)(s.last_update_ms - sent_ms) < (int32_t)SETTLE_MS)) return;
 
     if (!done) {
+        // Ask for a report once FluidNC has had time to run the G10, then use
+        // the first report that comes after the question
+        if (next_query_ms) {
+            if ((int32_t)(now - next_query_ms) < 0) return;
+            FluidNCClient::requestStatusReport();
+            query_ms = now;
+            next_query_ms = 0;
+            return;
+        }
+        if ((int32_t)(s.last_update_ms - query_ms) <= 0) return;
+        if (s.state != STATE_IDLE) {
+            next_query_ms = now + 100;  // still moving: ask again shortly
+            return;
+        }
+
         char cmd[64] = "G10 L20 P0";
         bool any = false;
         for (const char *a = pending_axes; *a; a++) {
@@ -48,6 +64,8 @@ void WorkZero::onCheck(lv_timer_t *) {
             Serial.printf("[WorkZero] Step rounding correction: %s\n", cmd);
             strncat(cmd, "\n", sizeof(cmd) - strlen(cmd) - 1);
             FluidNCClient::sendCommand(cmd);
+        } else {
+            Serial.println("[WorkZero] No step rounding to correct");
         }
     }
     lv_timer_delete(check_timer);
